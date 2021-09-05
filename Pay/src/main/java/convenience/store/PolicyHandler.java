@@ -16,8 +16,7 @@ public class PolicyHandler{
     public void wheneverReservationCancelled_Cancel(@Payload ReservationCancelled reservationCancelled){
 
         if(!reservationCancelled.validate()) return;
-
-        System.out.println("\n\n##### listener Cancel : " + reservationCancelled.toJson() + "\n\n");
+        //System.out.println("\n\n##### listener Cancel : " + reservationCancelled.toJson() + "\n\n");
 
 
 
@@ -26,7 +25,7 @@ public class PolicyHandler{
         // payHistoryRepository.save(payHistory);
 
     }
-    /* 중복 생성으로 주석처
+    /* 중복 생성으로 주석처리 
     @StreamListener(KafkaProcessor.INPUT)
     public void wheneverReservationCancelled_Cancel(@Payload ReservationCancelled reservationCancelled){
 
