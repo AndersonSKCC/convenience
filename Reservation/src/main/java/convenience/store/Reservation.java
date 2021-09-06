@@ -1,9 +1,15 @@
 package convenience.store;
 
-import javax.persistence.*;
+import javax.persistence.Entity;
+import javax.persistence.GeneratedValue;
+import javax.persistence.GenerationType;
+import javax.persistence.Id;
+import javax.persistence.PostPersist;
+import javax.persistence.PostUpdate;
+import javax.persistence.PrePersist;
+import javax.persistence.Table;
+
 import org.springframework.beans.BeanUtils;
-import java.util.List;
-import java.util.Date;
 
 @Entity
 @Table(name="Reservation_table")
@@ -17,29 +23,53 @@ public class Reservation {
     private Long productId;
     private String productName;
     private Integer productPrice;
-    private String customerId;
+    private Long customerId;
     private String customerName;
     private String customerPhone;
     private Integer qty;
-
-    @PostPersist
-    public void onPostPersist(){
-        ProductReserved productReserved = new ProductReserved();
-        BeanUtils.copyProperties(this, productReserved);
-        productReserved.publishAfterCommit();
-
-        //Following code causes dependency to external APIs
-        // it is NOT A GOOD PRACTICE. instead, Event-Policy mapping is recommended.
-
+    
+    @PrePersist
+    public void onPrePersist() {   	
+        
         convenience.store.external.PayHistory payHistory = new convenience.store.external.PayHistory();
-        // mappings goes here
-        ReservationApplication.applicationContext.getBean(convenience.store.external.PayHistoryService.class).request(payHistory);
-
-        ReservationCancelled reservationCancelled = new ReservationCancelled();
-        BeanUtils.copyProperties(this, reservationCancelled);
-        reservationCancelled.publishAfterCommit();
-
+        
+        payHistory.setPayStatus(this.status);
+        payHistory.setReservationStatus(this.status);
+        payHistory.setReservationId(this.id);
+        payHistory.setCustomerId(this.customerId);
+        payHistory.setCustomerName(this.customerName);
+        payHistory.setCustomerPhone(this.customerPhone);
+        payHistory.setDate(this.date);
+        payHistory.setDate(this.date);
+        payHistory.setProductId(this.productId);
+        payHistory.setProductPrice(this.productPrice);
+        payHistory.setReserveQty(this.qty);
+        
+        boolean result = ReservationApplication.applicationContext.getBean(convenience.store.external.PayHistoryService.class).request(payHistory);
+        
+        if(result) {
+        	System.out.println("########## 결제가 완료되었습니다 ############");
+        }
     }
+    
+    
+    @PostPersist
+    public void onPostPersist() {
+    	ProductReserved productReserved = new ProductReserved();
+    	BeanUtils.copyProperties(this, productReserved);
+        productReserved.setReserveQty(this.qty);
+        productReserved.publishAfterCommit();
+    }
+    
+    @PostUpdate
+    public void onPostUpdate() {
+    	if (this.status.equals("CANCEL")) {    
+	    	ReservationCancelled reservationCancelled = new ReservationCancelled();
+	        BeanUtils.copyProperties(this, reservationCancelled);
+	        reservationCancelled.publishAfterCommit();
+    	}
+    }
+    
 
     public Long getId() {
         return id;
@@ -83,11 +113,11 @@ public class Reservation {
     public void setProductPrice(Integer productPrice) {
         this.productPrice = productPrice;
     }
-    public String getCustomerId() {
+    public Long getCustomerId() {
         return customerId;
     }
 
-    public void setCustomerId(String customerId) {
+    public void setCustomerId(Long customerId) {
         this.customerId = customerId;
     }
     public String getCustomerName() {
