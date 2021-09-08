@@ -27,17 +27,7 @@ public class Product {
     
     @Transient
     private Long reserveId;
-
-    @PostUpdate
-    public void onPostUpdate(){    	
-    	if ("PICKUP".equals(this.getProductStatus())) {    		
-    		ProductPickedup productPickedup = new ProductPickedup();
-            BeanUtils.copyProperties(this, productPickedup);            
-            productPickedup.publishAfterCommit();
-    	} else {
-    		System.out.println("############ Nothing happened");
-    	}    	
-    }
+    
 
     public Long getId() {
         return id;

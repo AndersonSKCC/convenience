@@ -29,7 +29,7 @@ public class PolicyHandler{
         DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         String dateStr = format.format(Calendar.getInstance().getTime());
         reservation.setDate(dateStr);
-        reservation.setStatus("PICKUP");
+        reservation.setStatus(productPickedup.getReserveStatus());
         
         reservationRepository.save(reservation);
         

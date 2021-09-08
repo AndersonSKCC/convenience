@@ -20,8 +20,18 @@ public class StoreReservation {
     private String customerName;
     private String customerPhone;
     private String reserveStatus;
-
     
+    @PostUpdate
+    public void onPostUpdate(){    	
+    	if ("PICKUP".equals(this.getReserveStatus())) {    		
+    		ProductPickedup productPickedup = new ProductPickedup();
+            BeanUtils.copyProperties(this, productPickedup);            
+            productPickedup.publishAfterCommit();
+    	} else {
+    		System.out.println("############ Nothing happened");
+    	}    	
+    }
+        
     public Long getId() {
         return id;
     }
