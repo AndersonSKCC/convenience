@@ -23,19 +23,19 @@ public class PayHistory {
     private String reserveStatus;
     private Long reserveId;
     private Long productId;
-    private Long reserveQty;
+    private Integer reserveQty;
     private Long productPrice;
     private Long customerId;
     private String customerName;
     private String customerPhone;
-    private Date reserveDate;
-    private Date date;
+    private String reserveDate;
+    private String date;
 
     @PostPersist
     public void onPostPersist() {
     	if(this.reserveStatus.equals("RESERVE")) {
     		PayRequested payRequested = new PayRequested();
-    		BeanUtils.copyProperties(this, payRequested);
+    		BeanUtils.copyProperties(this, payRequested);    		
     		payRequested.publishAfterCommit();
     	}
     }
@@ -84,11 +84,11 @@ public class PayHistory {
     public void setProductId(Long productId) {
         this.productId = productId;
     }
-    public Long getReserveQty() {
+    public Integer getReserveQty() {
         return reserveQty;
     }
 
-    public void setReserveQty(Long reserveQty) {
+    public void setReserveQty(Integer reserveQty) {
         this.reserveQty = reserveQty;
     }
     public Long getProductPrice() {
@@ -119,18 +119,18 @@ public class PayHistory {
     public void setCustomerPhone(String customerPhone) {
         this.customerPhone = customerPhone;
     }
-    public Date getReserveDate() {
+    public String getReserveDate() {
         return reserveDate;
     }
 
-    public void setReserveDate(Date reserveDate) {
+    public void setReserveDate(String reserveDate) {
         this.reserveDate = reserveDate;
     }
-    public Date getDate() {
+    public String getDate() {
         return date;
     }
 
-    public void setDate(Date date) {
+    public void setDate(String date) {
         this.date = date;
     }
 

@@ -25,10 +25,10 @@ public class PolicyHandler{
         if(!productPickedup.validate()) return;
         System.out.println("\n\n##### listener Reserve : " + productPickedup.toJson() + "\n\n");
         
-        Reservation reservation = reservationRepository.findById(productPickedup.getReserveId()).orElseThrow();
+        Reservation reservation = reservationRepository.findById(productPickedup.getReserveId()).orElseThrow(null);
         DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-		String dateStr = format.format(Calendar.getInstance().getTime());
-		reservation.setDate(dateStr);
+        String dateStr = format.format(Calendar.getInstance().getTime());
+        reservation.setDate(dateStr);
         reservation.setStatus("PICKUP");
         
         reservationRepository.save(reservation);

@@ -52,14 +52,20 @@ public class ProductController {
 	}
 	 
 	//@ApiOperation(value = "상품 찾아가기")
-	@GetMapping("/pickup/{id}")
+	@GetMapping("/pickup/{reserveId}")
 	public ResponseEntity<Product> pickupProduct(@PathVariable Long reserveId) {
 		try {
-			StoreReservation reservation = storeReservationRepository.findById(reserveId).orElseThrow();
-			Product product = productRepository.findById(reservation.getProductId()).orElseThrow();			 
+			StoreReservation reservation = storeReservationRepository.findById(reserveId).orElseThrow(null);
+			Product product = productRepository.findById(reservation.getProductId()).orElseThrow(null);			 
+			
 			product.setProductQty(product.getProductQty() - reservation.getReserveQty());
 			product.setProductStatus("PICKUP");
-			productRepository.save(product);			 
+			product.setReserveId(reserveId);
+			productRepository.save(product);		
+			
+			reservation.setReserveStatus("PICKUP");
+			storeReservationRepository.save(reservation);			
+			
 			return ResponseEntity.ok(product);			 
 		} catch(Exception e) {
 			System.out.println("pickupProduct Error : " + e);
