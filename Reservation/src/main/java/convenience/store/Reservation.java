@@ -51,15 +51,7 @@ public class Reservation {
         	System.out.println("########## 결제가 완료되었습니다 ############");
         } else {
             System.out.println("########## 결제가 실패하였습니다 ############");
-        }
-
-        // CB test 용 지연 코드.
-        try {
-            Thread.currentThread().sleep((long) (400 + Math.random() * 220));
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-    	
+        }    	
     	
     	ProductReserved productReserved = new ProductReserved();
     	BeanUtils.copyProperties(this, productReserved);
