@@ -48,8 +48,8 @@ public class ReservationController {
 	}
 	
 	//@ApiOperation(value = "예약 취소하기")
-	@PatchMapping("/cancel")
-	public ResponseEntity<Reservation> cancelReservation(@RequestBody Long id) {
+	@PatchMapping("/cancel/{id}")
+	public ResponseEntity<Reservation> cancelReservation(@PathVariable Long id) {
 		Reservation reservation = reservationRepository.findById(id).orElseThrow(null);
 		DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
 		String dateStr = format.format(Calendar.getInstance().getTime());
