@@ -2,7 +2,7 @@
 
 
 ## 사전 작업
-- [AWS 환경 설정 값]
+- AWS 환경 설정 값
   - 리전코드     : ca-central-1
   - 사용자 계정  : user-dongjin
   - 클러스터     : user-dongjin-eks
@@ -15,7 +15,8 @@
 
 <br>
 
-### ◆ IAM 보안 자격증명 설정 (한번 설정한 경우 다시 설정필요 없음) (Container-Orchestration(AWS)_2021.pdf – P59 ~P61 참조)
+### ◆ 클러스터 생성 및 kubctl 연결 및 docker 연결.
+- IAM 보안 자격증명 설정 (한번 설정한 경우 다시 설정필요 없음) (Container-Orchestration(AWS)_2021.pdf – P59 ~P61 참조)
 ```
 > aws configure
 AWS Access Key ID [None]: 
@@ -24,32 +25,102 @@ Default region name [None]: ca-central-1
 Default output format [None]: json
 ```
 
-### ◆ AWS 클러스터 생성(EKS)  (한번 생성한 경우 다시 생성 필요 없음) (생성에 시간 오래 걸림 10분)
+- AWS 클러스터 생성(EKS)  (한번 생성한 경우 다시 생성 필요 없음) (생성에 시간 오래 걸림 10분)
 ```
 > eksctl create cluster --name user-dongjin-eks --version 1.19 --nodegroup-name standard-workers --node-type t3.medium --nodes 4 --nodes-min 1 --nodes-max 4
 ```
-- 클러스터 삭제시 
+- - 클러스터 삭제시 
 ```
 > eksctl delete cluster --region=ca-central-1 --name=user-dongjin-eks
 ```
 
-### ◆ AWS 클러스터 토큰 가져오기
+- AWS 클러스터 토큰 가져오기
 ```
 > aws eks --region ca-central-1 update-kubeconfig --name user-dongjin-eks
 > kubectl get all
 > kubectl config current-context
 ```
 
-### ◆ AWS 컨테이너 레지스트리(ECR) 로그인
+- AWS 컨테이너 레지스트리(ECR) 로그인
 ```
 > docker login --username AWS -p $(aws ecr get-login-password --region ca-central-1) 422489764856.dkr.ecr.ca-central-1.amazonaws.com/
 ```
 
-### ◆ Metric-Server 설치  (이미 설치한 경우에는 추가 설치 필요 없음)
+- Metric-Server 설치  (이미 설치한 경우에는 추가 설치 필요 없음)
 ```
 > kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/download/v0.5.0/components.yaml
 > kubectl top node  (** 시간이 조금 걸림)
 ```
+
+
+- Kafka 설치 (gatway를 제외하고는 각 서비스가 kafka에 연결하므로 kafka 서비스가 떠 있지 않으면 pod, deployment  올라오지 않음.)
+  - helm 설치 필요.  (http://34.117.35.195/operation/checkpoint/check-point-two/ 참고)
+```
+> kubectl --namespace kube-system create sa tiller 
+> kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
+
+> helm repo add incubator https://charts.helm.sh/incubator
+> helm repo update
+> kubectl create ns kafka
+> helm install my-kafka --namespace kafka incubator/kafka --debug
+
+> kubectl get svc my-kafka -n kafka
+> kubectl get all -n kafka
+```
+
+- Kafka Listen  확인.
+```
+> kubectl exec -it my-kafka-0 -n kafka -- bash
+> kafka-console-consumer --bootstrap-server my-kafka.kafka.svc.cluster.local:9092 --topic convenience --from-beginning
+```
+<br/>
+
+### ◆ PVC (Persistant volume claim) 설정.
+- EFS 생성
+  - **교재-Container-Orchestration(AWS)_2021.pdf Page.132 참고**
+
+-  ServerAccount 생성  (yaml 폴더에 관련 yaml 파일 있음.)
+```
+> kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-sa.yaml
+```
+- SA(efs-provisioner)에 권한(rbac) 설정
+```
+> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-rbac.yaml
+```
+
+- provisioner 설치
+  efs-provisioner-deploy.yaml 파일에서    ** 파일을 받아 수정 후 적용
+  - value: #{efs system id} => 파일 시스템 ID
+  - value: # {aws region} => EKS 리전
+  - server: # {file-system-id}.efs.{aws-region}.amazonaws.com
+```
+> kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-provisioner-deploy.yaml
+> kubectl get pod
+
+NAME                              READY   STATUS    RESTARTS   AGE
+efs-provisioner-5976978f5-cqbzq   1/1     Running   0          19s
+```
+- storageClass 등록, 조회
+```
+> kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-storageclass.yaml
+> kubectl get sc
+NAME            PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+aws-efs         my-aws.com/aws-efs      Delete          Immediate              false                  14s
+gp2 (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   false                  27h
+```
+- pvc 생성
+```
+> kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/volume-pvc.yaml
+> kubectl get pvc
+> kubectl describe pvc
+  Type    Reason                 Age                From                                                                                     Message
+  ----    ------                 ----               ----                                                                                     -------
+  Normal  ExternalProvisioning   35s (x2 over 35s)  persistentvolume-controller                                                              waiting for a volume to be created, either by external provisioner "my-aws.com/aws-efs" or manually created by system administrator
+  Normal  Provisioning           35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  External provisioner is provisioning volume for claim "default/aws-efs"
+  Normal  ProvisioningSucceeded  35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  Successfully provisioned volume pvc-c770d8b7-ef09-4a19-903b-cced4daa9f1d
+```
+
+<br/>
 <br/>
 
 ---
@@ -191,24 +262,15 @@ EOF
 > kubectl get all
 ```
 
-### ◆ Kafka 설치 (gatway를 제외하고는 각 서비스가 kafka에 연결하므로 kafka 서비스가 떠 있지 않으면 pod, deployment  올라오지 않음.)
-- helm 설치 필요.  (http://34.117.35.195/operation/checkpoint/check-point-two/ 참고)
-```
-> kubectl --namespace kube-system create sa tiller 
-> kubectl create clusterrolebinding tiller --clusterrole cluster-admin --serviceaccount=kube-system:tiller
-
-> helm repo add incubator https://charts.helm.sh/incubator
-> helm repo update
-> kubectl create ns kafka
-> helm install my-kafka --namespace kafka incubator/kafka --debug
-
-> kubectl get svc my-kafka -n kafka
-> kubectl get all -n kafka
-```
 
 ## **Circuit Breaker**
-
-시나리오는 예약(Resevation) --> 결제(pay) 시의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 결재 지연 메세지 보여 줌으로 장애 격리.
+- 시나리오
+  1. 예약(reservation) --> 결재(pay)시의 연결을 RESTful Request/Response 로 연동하여 구현 함. 결제 요청이 과도할 경우 CB가 발생하고 fallback으로 결재 지연 메새지를 보여줌으로 장애 격리 시킴.
+  2. circuit break의 timeout은 610mm 설정. 
+  3. Pay 서비스에 임의의 부하 처리.
+  4. 부하테스터(seige) 를 통한 circuit break 확인. 
+    - 결재 지연 메세지 확인.
+    - seige의 Availability 100% 확인.
 
 - 서킷브레이커 설정
   - Reservation 서비스의 application.yaml에 아래 내용 추가
@@ -235,7 +297,7 @@ hystrix:
 - Resevation 서비스의  FeignClient fallback 옵션 추가.
   - PayHistoryService.java에 아래 코드 추가.
 ```
-@FeignClient(name ="delivery", url="${api.url.delivery}", fallback = PayHistoryServiceImpl.class)
+@FeignClient(name ="delivery", url="${api.url.pay}", fallback = PayHistoryServiceImpl.class)
 ```
 
 - 부하테스터 siege 툴을 통한 서킷 브레이커 동작 확인:
@@ -243,45 +305,48 @@ hystrix:
   - 60초 동안 실시
   - Reservation 서비스의 log 확인.
 ```
-siege -c100 -t60S -r10 --content-type "application/json" 'http://localhost:8081/reservations POST {"productName": "TV","qty": "1"}'
+siege -c100 -t30S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Galaxy","productPrice":125000,"customerId":99,"customerName":"Anderson","customerPhone":"010-1234-5678","qty":1}'
 
 
 ** SIEGE 4.1.1
 ** Preparing 100 concurrent users for battle.
 The server is now under siege...
-HTTP/1.1 201     2.19 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://localhost:8081/reservations
-HTTP/1.1 201     2.66 secs:     378 bytes ==> POST http://localhost:8081/reservations
+HTTP/1.1 201     2.19 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.66 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
 
 
 
 
 Lifting the server siege...
-Transactions:		         670 hits
+Transactions:		        8776 hits
 Availability:		      100.00 %
-Elapsed time:		       59.68 secs
-Data transferred:	        0.26 MB
-Response time:		        8.43 secs
-Transaction rate:	       11.23 trans/sec
-Throughput:		        0.00 MB/sec
-Concurrency:		       94.66
-Successful transactions:         708
+Elapsed time:		       29.83 secs
+Data transferred:	        1.67 MB
+Response time:		        0.34 secs
+Transaction rate:	      294.20 trans/sec
+Throughput:		        0.06 MB/sec
+Concurrency:		       99.32
+Successful transactions:        8776
 Failed transactions:	           0
-Longest transaction:	       16.39
+Longest transaction:	        2.24
 Shortest transaction:	        0.00
 
 ```
  
 ```
 @@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+########## 결제가 실패하였습니다 ############
 ```
 - 부하 테스트에서 100% 가 성공함. CB 발생시 FeinClient의 Fallback이 동작하여 결재 지연 메세지를 고객에게 보여줌 으로 다른 동작 하지 못하게 함. 
 
@@ -303,7 +368,7 @@ kubectl autoscale deploy pay --min=1 --max=10 --cpu-percent=15
 
 - CB 에서 했던 방식대로 워크로드를 2분 동안 걸어준다.
 ```
-siege -c100 -t60S -r10 --content-type "application/json" 'http://localhost:8081/reservations POST {"productName": "TV","qty": "1"}'
+siege -c100 -t120S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Galaxy","productPrice":125000,"customerId":99,"customerName":"Anderson","customerPhone":"010-1234-5678","qty":1}'
 ```
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다:
 ```
@@ -357,7 +422,7 @@ kubectl get deploy reservation -o yaml
 
 - Liveness Probe 확인 
 ```
-> http http://Reservation:8080/actuator/health      # Liveness Probe 확인
+> http http://reservation:8080/actuator/health      # Liveness Probe 확인
 
 HTTP/1.1 200 
 Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
@@ -372,8 +437,8 @@ Transfer-Encoding: chunked
 - Liveness Probe Fail 설정 및 확인 
   - Reservation Liveness Probe를 명시적으로 Fail 상태로 전환한다.
 ```
-> http DELETE http://Reservation:8080/healthcheck    #actuator health 를 DOWN 시킨다.
-> http http://Reservation:8080/actuator/health
+> http DELETE http://reservation:8080/healthcheck    #actuator health 를 DOWN 시킨다.
+> http http://reservation:8080/actuator/health
 HTTP/1.1 503 
 Connection: close
 Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
@@ -431,7 +496,7 @@ Events:
 ```
 > kubectl create deploy siege --image=ghcr.io/acmexii/siege-nginx:latest    # 이미 생성이 된 경우 무시.
 > kubectl exec pod/[SIEGE-POD객체] -it -- /bin/bash
-> siege -v -c1 -t120S http://Reservation:8080/reservations
+> siege -v -c1 -t120S http://reservation:8080/reservations
 ```
 
 - pod의 상태 모니터링
@@ -489,67 +554,11 @@ Longest transaction:	        0.68
 Shortest transaction:	        0.00
 ```
 
-<br/>
-
----
-## **PVC (Persistant volume claim)**
+## **PVC (Persistant volume claim)** 
 
 - 시나리오
-  1. 사전 작업
-      1) EFS 계정 생성 및 Role 바인딩
-      2) EFS Provioner 설치
-      3) StorageClass 생성.
-      4) PVC 생성.
-  2. Reservation 서비스의 yaml에 PVC 설정 부분 확인.
-  3. bash shell을 사용할 수 있는 pod를 동일한 PVC 사용할 수 있게 설정 후 배포
-  4. Reservation 서비스에서 생성한 파일을 확인.
-
-
-
-### ◆ 사전 작업
-- EFS 생성
-  - **교재-Container-Orchestration(AWS)_2021.pdf Page.132 참고**
-
--  ServerAccount 생성  (yaml 폴더에 관련 yaml 파일 있음.)
-```
-> kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-sa.yaml
-```
-- SA(efs-provisioner)에 권한(rbac) 설정
-```
-> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-rbac.yaml
-```
-
-- provisioner 설치
-  efs-provisioner-deploy.yaml 파일에서    ** 파일을 받아 수정 후 적용
-  - value: #{efs system id} => 파일 시스템 ID
-  - value: # {aws region} => EKS 리전
-  - server: # {file-system-id}.efs.{aws-region}.amazonaws.com
-```
-> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/efs-provisioner-deploy.yaml
-> kubectl get pod
-
-NAME                              READY   STATUS    RESTARTS   AGE
-efs-provisioner-5976978f5-cqbzq   1/1     Running   0          19s
-```
-- storageClass 등록, 조회
-```
-> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/fs-storageclass.yaml
-> kubectl get sc
-NAME            PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
-aws-efs         my-aws.com/aws-efs      Delete          Immediate              false                  14s
-gp2 (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   false                  27h
-```
-- pvc 생성
-```
-> kubectl apply -f volume-pvc.yaml
-> kubectl get pvc
-> kubectl describe pvc
-  Type    Reason                 Age                From                                                                                     Message
-  ----    ------                 ----               ----                                                                                     -------
-  Normal  ExternalProvisioning   35s (x2 over 35s)  persistentvolume-controller                                                              waiting for a volume to be created, either by external provisioner "my-aws.com/aws-efs" or manually created by system administrator
-  Normal  Provisioning           35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  External provisioner is provisioning volume for claim "default/aws-efs"
-  Normal  ProvisioningSucceeded  35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  Successfully provisioned volume pvc-c770d8b7-ef09-4a19-903b-cced4daa9f1d
-```
+  1. bash shell을 사용할 수 있는 pod를 동일한 PVC 사용할 수 있게 설정 후 배포
+  2. Reservation 서비스에서 생성한 파일을 확인.  (codebuild 설정되고 동작 확인) 
 
 - Reservation 서비스에서 사용하는 PVC를 사용하는 Pod를 생성하여 배포 후 Reservation 서비스에서 생성한 파일 확인.
 ```
@@ -559,4 +568,5 @@ gp2 (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   f
 > kubectl exec -it seieg -- /bin/bash
 > ls -al /mnt/aws
 ```
-
+<br/>
+<br/>

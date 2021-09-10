@@ -1,5 +1,5 @@
 server:
-  port: 8080  #for cloud
+  port: 8080
 
 ---
 
@@ -46,7 +46,7 @@ feign:
 
 hystrix:
   command:
-    # Àü¿ª¼³Á¤ timeoutÀÌ 610ms °¡ ³ÑÀ¸¸é CB Ã³¸®.
+    # ì „ì—­ì„¤ì • timeoutì´ 610ms ê°€ ë„˜ìœ¼ë©´ CB ì²˜ë¦¬.
     default:
       execution.isolation.thread.timeoutInMilliseconds: 610
 
@@ -55,6 +55,11 @@ logging:
   level:
     org.hibernate.type: trace
     org.springframework.cloud: debug
+
+api:
+  url:
+    pay: http://localhost:8082/pay
+
 server:
   port: 8081
 ---
@@ -103,6 +108,13 @@ feign:
 
 hystrix:
   command:
-    # Àü¿ª¼³Á¤ timeoutÀÌ 610ms °¡ ³ÑÀ¸¸é CB Ã³¸®.
+    # ì „ì—­ì„¤ì • timeoutì´ 610ms ê°€ ë„˜ìœ¼ë©´ CB ì²˜ë¦¬.
     default:
       execution.isolation.thread.timeoutInMilliseconds: 610
+
+api:
+  url:
+    pay: http://pay:8080/pay
+
+server:
+  port: 8080  #for cloud
