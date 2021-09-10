@@ -56,6 +56,7 @@ public class Reservation {
     	ProductReserved productReserved = new ProductReserved();
     	BeanUtils.copyProperties(this, productReserved);
         productReserved.setReserveQty(this.qty);
+        productReserved.setReserveDate(this.date);
         productReserved.publishAfterCommit();
     }
     
