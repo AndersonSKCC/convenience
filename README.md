@@ -269,84 +269,84 @@ public class Reservation {
   private Integer qty;
 
   public Long getId() {
-		return id;
-	}
+    return id;
+  }
 
-	public void setId(Long id) {
-		this.id = id;
-	}
+  public void setId(Long id) {
+    this.id = id;
+  }
 
-	public String getStatus() {
-		return status;
-	}
+  public String getStatus() {
+    return status;
+  }
 
-	public void setStatus(String status) {
-		this.status = status;
-	}
+  public void setStatus(String status) {
+     this.status = status;
+  }
 
-	public String getDate() {
-		return date;
-	}
+  public String getDate() {
+     return date;
+  }
 
-	public void setDate(String date) {
-		this.date = date;
-	}
+  public void setDate(String date) {
+    this.date = date;
+  }
 
-	public Long getProductId() {
-		return productId;
-	}
+  public Long getProductId() {
+     return productId;
+  }
 
-	public void setProductId(Long productId) {
-		this.productId = productId;
-	}
+  public void setProductId(Long productId) {
+     this.productId = productId;
+  }
 
-	public String getProductName() {
-		return productName;
-	}
+  public String getProductName() {
+    return productName;
+  }
 
-	public void setProductName(String productName) {
-		this.productName = productName;
-	}
+  public void setProductName(String productName) {
+    this.productName = productName;
+  }
 
-	public Integer getProductPrice() {
-		return productPrice;
-	}
+  public Integer getProductPrice() {
+    return productPrice;
+  }
 
-	public void setProductPrice(Integer productPrice) {
-		this.productPrice = productPrice;
-	}
+  public void setProductPrice(Integer productPrice) {
+     this.productPrice = productPrice;
+  }
 
-	public Long getCustomerId() {
-		return customerId;
-	}
+  public Long getCustomerId() {
+    return customerId;
+  }
 
-	public void setCustomerId(Long customerId) {
-		this.customerId = customerId;
-	}
+  public void setCustomerId(Long customerId) {
+    this.customerId = customerId;
+  }
 
-	public String getCustomerName() {
-		return customerName;
-	}
+  public String getCustomerName() {
+    return customerName;
+  }
 
-	public void setCustomerName(String customerName) {
-		this.customerName = customerName;
-	}
+  public void setCustomerName(String customerName) {
+    this.customerName = customerName;
+  }
 
-	public String getCustomerPhone() {
-		return customerPhone;
-	}
+  public String getCustomerPhone() {
+    return customerPhone;
+  }
 
-	public void setCustomerPhone(String customerPhone) {
-		this.customerPhone = customerPhone;
-	}
+  public void setCustomerPhone(String customerPhone) {
+    this.customerPhone = customerPhone;
+  }
 
-	public Integer getQty() {
-		return qty;
-	}
+  public Integer getQty() {
+    return qty;
+  }
 
-	public void setQty(Integer qty) {
-		this.qty = qty;
-	}
+  public void setQty(Integer qty) {
+      this.qty = qty;
+  }
 }
 
 ```
@@ -361,7 +361,7 @@ import org.springframework.data.rest.core.annotation.RepositoryRestResource;
 @RepositoryRestResource(collectionResourceRel="products", path="products")
 public interface ProductRepository extends JpaRepository<Product, Long>{
 	
-	Product findByProductName(String productName);
+  Product findByProductName(String productName);
 	
 }
 
@@ -575,86 +575,130 @@ POST http://localhost:8081/reservation/order   #Success
 ## 비동기식 호출 / 시간적 디커플링 / 장애격리 / 최종 (Eventual) 일관성 테스트
 
 
-결제가 이루어진 후에 상점시스템으로 이를 알려주는 행위는 동기식이 아니라 비 동기식으로 처리하여 상점 시스템의 처리를 위하여 결제주문이 블로킹 되지 않아도록 처리한다.
+결제가 이루어진 후에 Store 서비스로 이를 알려주는 행위는 동기식이 아니라 비동기식으로 처리하여 Store 서비스의 처리를 위하여 결제가 블로킹 되지 않아도록 처리한다.
  
-- 이를 위하여 결제이력에 기록을 남긴 후에 곧바로 결제승인이 되었다는 도메인 이벤트를 카프카로 송출한다(Publish)
+- 이를 위하여 결제 이력에 기록을 남긴 후에 곧바로 결제 요청이 되었다는 도메인 이벤트를 카프카로 송출한다. (Publish)
+  이때 다른 저장 로직에 의해서 해당 이벤트가 발송되는 것을 방지하기 위해 Status 체크하는 로직을 추가했다.
  
 ```
-package fooddelivery;
+
+package convenience.store;
 
 @Entity
-@Table(name="결제이력_table")
-public class 결제이력 {
+@Table(name="payhistory_table")
+public class PayHistory {
 
- ...
-    @PrePersist
-    public void onPrePersist(){
-        결제승인됨 결제승인됨 = new 결제승인됨();
-        BeanUtils.copyProperties(this, 결제승인됨);
-        결제승인됨.publish();
+    ...
+
+    @PostPersist
+    public void onPostPersist() {
+      if(this.reserveStatus.equals("RESERVE")) {
+        PayRequested payRequested = new PayRequested();
+    	BeanUtils.copyProperties(this, payRequested);    		
+    	payRequested.publishAfterCommit();
+
+        payRequested.saveJasonToPvc(payRequested.toJson());
+
+      }
     }
 
-}
 ```
 - 상점 서비스에서는 결제승인 이벤트에 대해서 이를 수신하여 자신의 정책을 처리하도록 PolicyHandler 를 구현한다:
 
 ```
-package fooddelivery;
+package convenience.store;
 
 ...
 
 @Service
-public class PolicyHandler{
+public class PolicyHandler {
 
-    @StreamListener(KafkaProcessor.INPUT)
-    public void whenever결제승인됨_주문정보받음(@Payload 결제승인됨 결제승인됨){
-
-        if(결제승인됨.isMe()){
-            System.out.println("##### listener 주문정보받음 : " + 결제승인됨.toJson());
-            // 주문 정보를 받았으니, 요리를 슬슬 시작해야지..
-            
-        }
-    }
-
-}
-
-```
-실제 구현을 하자면, 카톡 등으로 점주는 노티를 받고, 요리를 마친후, 주문 상태를 UI에 입력할테니, 우선 주문정보를 DB에 받아놓은 후, 이후 처리는 해당 Aggregate 내에서 하면 되겠다.:
-  
-```
-  @Autowired 주문관리Repository 주문관리Repository;
+  ...
   
   @StreamListener(KafkaProcessor.INPUT)
-  public void whenever결제승인됨_주문정보받음(@Payload 결제승인됨 결제승인됨){
+  public void wheneverPayRequested_Reserve(@Payload PayRequested payRequested){
 
-      if(결제승인됨.isMe()){
-          카톡전송(" 주문이 왔어요! : " + 결제승인됨.toString(), 주문.getStoreId());
-
-          주문관리 주문 = new 주문관리();
-          주문.setId(결제승인됨.getOrderId());
-          주문관리Repository.save(주문);
-      }
+    if(!payRequested.validate()) return;
+    System.out.println("\n\n##### listener Reserve : " + payRequested.toJson() + "\n\n");
+        
+    StoreReservation storeReservation = new StoreReservation();
+    BeanUtils.copyProperties(payRequested, storeReservation);
+    storeReservationRepository.save(storeReservation);
+        
+    // 예약이 되면 상품의 보유 갯수를 줄여준다  
+    Product product = productRepository.findById(payRequested.getProductId()).orElseThrow(null);
+    product.setProductQty(product.getProductQty() - payRequested.getReserveQty());
+    productRepository.save(product);
+        
   }
 
 ```
-
-상점 시스템은 주문/결제와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, 상점시스템이 유지보수로 인해 잠시 내려간 상태라도 주문을 받는데 문제가 없다:
+실제 구현을 하자면, 결제가 완료된 이후에 카톡 알림을 통해 예약이 완료되었다는 외부 이벤트를 보내고, 점주는 예약 상태를 Dashboard를 통해 확인할 수 있다.
+  
 ```
-# 상점 서비스 (store) 를 잠시 내려놓음 (ctrl+c)
 
-#주문처리
-http localhost:8081/orders item=통닭 storeId=1   #Success
-http localhost:8081/orders item=피자 storeId=2   #Success
+# 결제 성공시 카톡 메세지 전송
 
-#주문상태 확인
-http localhost:8080/orders     # 주문상태 안바뀜 확인
+  @PostPersist
+  public void onPostPersist() {
+
+  convenience.store.external.PayHistory payHistory = new convenience.store.external.PayHistory();
+
+  boolean result = ReservationApplication.applicationContext.getBean(convenience.store.external.PayHistoryService.class).request(payHistory);
+
+  if(result) {
+    System.out.println("########## 결제가 완료되었습니다 ############");
+    // 결제 성공 카톡 메세지 발송
+  } else {
+    System.out.println("########## 결제가 실패하였습니다 ############");
+    // 결제 실패 카톡 메세지 발송
+  }    	
+
+}
+
+# 예약 현황을 Dashboard에서 확인
+
+GET http://localhost:8084/dashboard/list
+
+```
+
+Store 서비스는 예약/결제와 완전히 분리되어있으며, 이벤트 수신에 따라 처리되기 때문에, Store 서비스를 유지보수로 인해 잠시 내려간 상태라도 예약을 받는데 문제가 없다:
+```
+# Store 서비스 를 잠시 내려놓음 (ctrl+c)
+
+#예약처리
+POST http://localhost:8081/reservation/order   #Success
+{
+    "productId": 1,
+    "productName": "Milk",
+    "productPrice": 1200,
+    "customerId": 2,
+    "customerName": "Sam",
+    "customerPhone": "010-9837-0279",
+    "qty": 2
+}
+
+POST http://localhost:8081/reservation/order   #Success
+{
+    "productId": 2,
+    "productName": "Snack",
+    "productPrice": 1500,
+    "customerId": 2,
+    "customerName": "Sam",
+    "customerPhone": "010-9837-0279",
+    "qty": 5
+}
+
+#예약상태 확인
+GET http://localhost:8081/reservation/list     # 예약상태 조회 가능
 
 #상점 서비스 기동
-cd 상점
+cd Store
 mvn spring-boot:run
 
 #주문상태 확인
-http localhost:8080/orders     # 모든 주문의 상태가 "배송됨"으로 확인
+GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯수만큼 줄어듬
+
 ```
 
 
