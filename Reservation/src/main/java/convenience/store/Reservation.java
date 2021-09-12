@@ -58,6 +58,8 @@ public class Reservation {
         productReserved.setReserveQty(this.qty);
         productReserved.setReserveDate(this.date);
         productReserved.publishAfterCommit();
+
+		productReserved.saveJasonToPvc(productReserved.toJson());
     }
     
     @PostUpdate
@@ -66,6 +68,8 @@ public class Reservation {
 	    	ReservationCancelled reservationCancelled = new ReservationCancelled();
 	        BeanUtils.copyProperties(this, reservationCancelled);
 	        reservationCancelled.publishAfterCommit();
+
+			reservationCancelled.saveJasonToPvc(reservationCancelled.toJson());
     	}
     }
     

@@ -616,15 +616,60 @@ Shortest transaction:	        0.00
 
 - 시나리오
   1. bash shell을 사용할 수 있는 pod를 동일한 PVC 사용할 수 있게 설정 후 배포
-  2. Reservation 서비스에서 생성한 파일을 확인.  (codebuild 설정되고 동작 확인) 
+  2. 각 서비스에서 생성한 파일을 확인. 
+  
+  <br/>
+- 각 Deployment의 PVC 생성정보는 buildspec-kubeclt.yaml에 적용되어있다.
+```
+                    volumeMounts:
+                      - mountPath: "/mnt/aws"
+                        name: volume
+                        :
+                        :
+                        :
+                volumes:
+                  - name: volume
+                    persistentVolumeClaim:
+                      claimName: aws-efs
+```
 
-- Reservation 서비스에서 사용하는 PVC를 사용하는 Pod를 생성하여 배포 후 Reservation 서비스에서 생성한 파일 확인.
+
+- 각 서비스의 Event 발생시 JSON 정보를 파일로 저장한다. 마지막 정보만 저정하기 위해 Overwirte하여 저장한다. 
+  - 아래와 같은 코드를 통하여 /mnt/aws의 경로에 저장한다. 
+```
+AbstractEvent.java
+
+    // PVC Test
+    public void saveJasonToPvc(String strJson){
+        File file = new File("/mnt/aws/xxxxxxxxed_json.txt");
+
+		try {
+			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+			writer.write(strJson);
+			writer.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+```
+
+- 각 서비스에서 저장한 Event 정보파일을 동일한 PVC를 사용하는 Pod를 생성하여 배포 후 /mnt/aws에 저장되어 있는지 확인. 
 ```
 > kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/pod-with-pvc.yaml
 > kubectl get pod
 > kubectl describe pod reservation
 > kubectl exec -it seieg -- /bin/bash
 > ls -al /mnt/aws
+
+total 20
+drwxrws--x 2 root 2000 6144 Sep 15 14:39 .
+drwxr-xr-x 1 root root   17 Sep 15 12:33 ..
+-rw-r--r-- 1 root 2000  154 Sep 15 14:37 payCancelled_json.txt
+-rw-r--r-- 1 root 2000   99 Sep 15 14:29 productDelivered_json.txt
+-rw-r--r-- 1 root 2000  158 Sep 15 14:36 productPickedupjson.txt
+-rw-r--r-- 1 root 2000   90 Sep 15 14:37 productReserved_json.txt
+
 ```
+- 서비스 Event를 저장한 파일들을 확인 할 수 있다. 
 <br/>
 <br/>
