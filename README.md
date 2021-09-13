@@ -30,16 +30,17 @@
 편의점 예약 기능 구현하기 
 
 기능적 요구사항
-1. 업주는 상품을 주문한다
+1. 점장은 상품을 주문한다
 2. Supplier는 제품을 배송한다
-3. 고객은 상품 목록을 조회한다
-4. 고객은 상품을 예약한다
-5. 고객이 예약을 결제한다
-6. 고객은 예약 내역을 취소할 수 있다
-7. 예약을 취소하면 결제를 취소한다
-8. 예약이 취소되면 상품 예약이 취소된다
-9. 고객이 방문하여 예약한 상품을 찾아간다
-10. 찾아간 상품은 Pickup으로 표시된다
+3. 배송이 되면 상품 갯수가 늘어난다 
+4. 고객은 상품 목록을 조회한다
+5. 고객은 상품을 예약한다
+6. 고객이 예약한 상품을 결제한다
+7. 고객은 예약 내역을 취소한다
+8. 예약을 취소하면 결제가 취소된다
+9. 예약이 취소되면 상품 예약이 취소된다
+10. 고객이 방문하여 예약한 상품을 찾아간다
+11. 찾아간 상품은 Pickup으로 표시된다
 
 비기능적 요구사항
 1. 트랜잭션
@@ -177,41 +178,41 @@
 
 ### 1차 완성본에 대한 기능적/비기능적 요구사항을 커버하는지 검증
 
-![image](https://user-images.githubusercontent.com/487999/79684167-3ecd2f00-826a-11ea-806a-957362d197e3.png)
+<img width="1448" alt="2021-09-13 11 11 59" src="https://user-images.githubusercontent.com/89987635/133099363-2a033cc6-8d97-4751-b9e9-424cf316ec3f.png">
 
-    - 고객이 메뉴를 선택하여 주문한다 (ok)
-    - 고객이 결제한다 (ok)
-    - 주문이 되면 주문 내역이 입점상점주인에게 전달된다 (ok)
-    - 상점주인이 확인하여 요리해서 배달 출발한다 (ok)
+    - 점장은 상품을 주문한다 (ok)
+    - Supplier는 제품을 배송한다 (ok)
+    - 배송이 되면 상품 갯수가 늘어난다 (ok) 
 
-![image](https://user-images.githubusercontent.com/487999/79684170-47256a00-826a-11ea-9777-e16fafff519a.png)
-    - 고객이 주문을 취소할 수 있다 (ok)
-    - 주문이 취소되면 배달이 취소된다 (ok)
-    - 고객이 주문상태를 중간중간 조회한다 (View-green sticker 의 추가로 ok) 
-    - 주문상태가 바뀔 때 마다 카톡으로 알림을 보낸다 (?)
+<img width="1430" alt="2021-09-13 11 23 30" src="https://user-images.githubusercontent.com/89987635/133101159-d8ca7260-7063-4bdb-99c4-37ec8a027077.png">
 
+    - 고객은 상품 목록을 조회한다 (ok)
+    - 고객은 상품을 예약한다 (ok)
+    - 고객이 예약한 상품을 결제한다 (ok)
+    - 고객이 방문하여 예약한 상품을 찾아간다 (ok)
+    - 찾아간 상품에 대한 예약은 Pickup으로 표시된다 (ok)
 
-### 모델 수정
+<img width="1430" alt="2021-09-13 11 16 05" src="https://user-images.githubusercontent.com/89987635/133099909-cfa99c23-c9d8-4f95-af6c-9a82bea15910.png">
 
-![image](https://user-images.githubusercontent.com/487999/79684176-4e4c7800-826a-11ea-8deb-b7b053e5d7c6.png)
-    
-    - 수정된 모델은 모든 요구사항을 커버함.
+    - 고객은 예약 내역을 취소한다 (ok)
+    - 예약을 취소하면 결제가 취소된다 (ok)
+    - 예약이 취소되면 상품 예약이 취소된다 (ok)
+
 
 ### 비기능 요구사항에 대한 검증
 
-![image](https://user-images.githubusercontent.com/487999/79684184-5c9a9400-826a-11ea-8d87-2ed1e44f4562.png)
+<img width="1430" alt="2021-09-13 11 33 01" src="https://user-images.githubusercontent.com/89987635/133102897-b2ef32d3-e1d9-498c-b868-42dd9d2951fc.png">
 
     - 마이크로 서비스를 넘나드는 시나리오에 대한 트랜잭션 처리
-        - 고객 주문시 결제처리:  결제가 완료되지 않은 주문은 절대 받지 않는다는 경영자의 오랜 신념(?) 에 따라, ACID 트랜잭션 적용. 주문와료시 결제처리에 대해서는 Request-Response 방식 처리
-        - 결제 완료시 점주연결 및 배송처리:  App(front) 에서 Store 마이크로서비스로 주문요청이 전달되는 과정에 있어서 Store 마이크로 서비스가 별도의 배포주기를 가지기 때문에 Eventual Consistency 방식으로 트랜잭션 처리함.
-        - 나머지 모든 inter-microservice 트랜잭션: 주문상태, 배달상태 등 모든 이벤트에 대해 카톡을 처리하는 등, 데이터 일관성의 시점이 크리티컬하지 않은 모든 경우가 대부분이라 판단, Eventual Consistency 를 기본으로 채택함.
-
+        - 고객 주문시 결제처리:  ACID 트랜잭션 적용. 예약 완료 시 결제처리에 대해서는 Request-Response 방식 처리
+        - 결제 완료시 Store 연결 :  PayHistory 에서 Store 마이크로서비스로 예약 요청이 전달되는 과정에 있어서 Store 마이크로서비스가 별도의 배포주기를 가지기 때문에 Eventual Consistency 방식으로 트랜잭션 처리함
+        - 나머지 모든 inter-microservice 트랜잭션: 출고 처리, 픽업 완료 등 데이터 일관성의 시점이 크리티컬하지 않은 모든 경우가 대부분이라 판단, Eventual Consistency 를 기본으로 채택함
 
 
 
 ## 헥사고날 아키텍처 다이어그램 도출
     
-![image](https://user-images.githubusercontent.com/487999/79684772-eba9ab00-826e-11ea-9405-17e2bf39ec76.png)
+<img width="1481" alt="2021-09-13 11 51 17" src="https://user-images.githubusercontent.com/89987635/133106137-c3ff9789-2d0a-4054-acb4-cb0eab362c14.png">
 
 
     - Chris Richardson, MSA Patterns 참고하여 Inbound adaptor와 Outbound adaptor를 구분함
