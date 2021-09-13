@@ -18,10 +18,11 @@
     - [동기식 호출 과 Fallback 처리](#동기식-호출-과-Fallback-처리)
     - [비동기식 호출 과 Eventual Consistency](#비동기식-호출-과-Eventual-Consistency)
   - [운영](#운영)
-    - [CI/CD 설정](#cicd설정)
-    - [동기식 호출 / 서킷 브레이킹 / 장애격리](#동기식-호출-서킷-브레이킹-장애격리)
+    - [CI/CD 설정](#cicd-설정)
+    - [동기식 호출 / 서킷 브레이킹 / 장애격리](#동기식-호출--서킷-브레이킹--장애격리)
     - [오토스케일 아웃](#오토스케일-아웃)
     - [무정지 재배포](#무정지-재배포)
+    - [Persistant Volume Claim](#persistant-volume-claim)
   - [신규 개발 조직의 추가](#신규-개발-조직의-추가)
 
 # 서비스 시나리오
@@ -715,283 +716,558 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
 # 운영
 
 ## CI/CD 설정
+각 구현체들은 각자의 AWS의 ECR 에 구성되었고, 사용한 CI/CD 플랫폼은 AWS-CodeBuild를 사용하였으며, pipeline build script 는 각 프로젝트 폴더 이하에 buildspec-kubectl.yaml 에 포함되었다.
+
+- 레포지터리 생성 확인
+  - 이미지 변경 필요.
+
+![image](https://user-images.githubusercontent.com/22004206/132270281-d9f0154e-ba48-442f-90f2-9208b6d1886e.png)
+
+<br/>
+
+- 생성 할 CodeBuild
+  - convenience-gateway
+  - convenience-reservation
+  - convenience-pay
+  - convenience-store
+  - convenience-stock
+  - convenience-view
+
+- 생성한 CodeBuild  이미지 캡쳐 Capture
+
+- github의 각 서비스의 서브 폴더에 buildspec-kubect.yaml 위치.
+
+![image](https://user-images.githubusercontent.com/89987635/133092812-8a5088b6-b271-455b-92b8-beed0b3cb4ea.png)
+![image](https://user-images.githubusercontent.com/89987635/133094765-be075fa4-4433-44c2-b163-1e101abc92a7.png)
 
 
-각 구현체들은 각자의 source repository 에 구성되었고, 사용한 CI/CD 플랫폼은 GCP를 사용하였으며, pipeline build script 는 각 프로젝트 폴더 이하에 cloudbuild.yml 에 포함되었다.
+- 연결된 github에 Commit 진행시 codebuild 진행 여부 및 성공 확인 
+  - github 주소
+    - https://github.com/AndersonSKCC/convenience
+
+-	배포된 6개의 Service  확인
+```
+> kubectl get all
+
+NAME                          READY   STATUS    RESTARTS   AGE
+gateway-6bdf6cf865-n4b8v      1/1     Running   0          15m
+pay-5bdf5998d9-qpdtk          1/1     Running   0          14m
+reservation-c544fd6bd-47sm5   1/1     Running   0          13m
+siege-75d5587bf6-8xnmc        1/1     Running   0          93m
+store-546b7cd7c8-gghdv        1/1     Running   0          15m
+supplier-6477564dd4-tq9tt     1/1     Running   0          14m    
+```
+
+
 
 
 ## 동기식 호출 / 서킷 브레이킹 / 장애격리
+- 시나리오
+  1. 예약(reservation) --> 결재(pay)시의 연결을 RESTful Request/Response 로 연동하여 구현 함. 결제 요청이 과도할 경우 CB가 발생하고 fallback으로 결재 지연 메새지를 보여줌으로 장애 격리 시킴.
+  2. circuit break의 timeout은 610mm 설정. 
+  3. Pay 서비스에 임의의 부하 처리.
+  4. 부하테스터(seige) 를 통한 circuit break 확인. 
+    - 결재 지연 메세지 확인.
+    - seige의 Availability 100% 확인.
 
-* 서킷 브레이킹 프레임워크의 선택: Spring FeignClient + Hystrix 옵션을 사용하여 구현함
+<br/>
+    
+- 서킷 브레이킹 프레임워크의 선택
+  - Spring FeignClient + Hystrix 옵션을 사용하여 구현함
 
-시나리오는 단말앱(app)-->결제(pay) 시의 연결을 RESTful Request/Response 로 연동하여 구현이 되어있고, 결제 요청이 과도할 경우 CB 를 통하여 장애격리.
-
-- Hystrix 를 설정:  요청처리 쓰레드에서 처리시간이 610 밀리가 넘어서기 시작하여 어느정도 유지되면 CB 회로가 닫히도록 (요청을 빠르게 실패처리, 차단) 설정
+- Hystrix 를 설정:  요청처리 쓰레드에서 처리시간이 610 밀리가 넘어서기 시작하여 어느정도 유지되면 CB 회로가 닫히고 결재 로직 대신 fallback으로 결재 지연 메세지 보여줌으로 장애 격리.
 ```
-# application.yml
+feign:
+  hystrix:
+    enabled: true
 
 hystrix:
   command:
-    # 전역설정
+    # 전역설정 timeout이 610ms 가 넘으면 CB 처리.
     default:
       execution.isolation.thread.timeoutInMilliseconds: 610
-
 ```
-
-- 피호출 서비스(결제:pay) 의 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
+- Pay 서비스에 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
+  - PayHistoryController.java에 아래 코드 추가
 ```
-# (pay) 결제이력.java (Entity)
-
-    @PrePersist
-    public void onPrePersist(){  //결제이력을 저장한 후 적당한 시간 끌기
-
-        ...
-        
         try {
             Thread.currentThread().sleep((long) (400 + Math.random() * 220));
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
+```
+- Resevation 서비스에 FeignClient fallback 추가
+  - PayHistoryService.java에 아래 코드 추가.
+```
+@FeignClient(name ="delivery", url="${api.url.pay}", fallback = PayHistoryServiceImpl.class)
+```
+- - PayHistoryServiceImple.java에 아래 코드 추가.
+```
+@Service
+public class PayHistoryServiceImpl implements PayHistoryService {
+    /**
+     * Pay fallback
+     */
+    public boolean request(PayHistory payhistory) {
+        System.out.println("@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@");
+        System.out.println("@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@");
+        System.out.println("@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@");
+        return false;
     }
+}
 ```
 
-* 부하테스터 siege 툴을 통한 서킷 브레이커 동작 확인:
-- 동시사용자 100명
-- 60초 동안 실시
-
+- 부하테스터 siege 툴을 통한 서킷 브레이커 동작 확인:
+  - 동시사용자 100명, 60초 동안 실시
+  - Reservation 서비스의 log 확인.
 ```
-$ siege -c100 -t60S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"item": "chicken"}'
+> siege -c100 -t60S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 
-** SIEGE 4.0.5
+** SIEGE 4.1.1
 ** Preparing 100 concurrent users for battle.
 The server is now under siege...
+HTTP/1.1 201     2.19 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+HTTP/1.1 201     2.66 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
+                                        
+                                        :
+                                        :
+                                        :
 
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.73 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.75 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.77 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.97 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.81 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.87 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.12 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.16 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.17 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.26 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.25 secs:     207 bytes ==> POST http://localhost:8081/orders
-
-* 요청이 과도하여 CB를 동작함 요청을 차단
-
-HTTP/1.1 500     1.29 secs:     248 bytes ==> POST http://localhost:8081/orders   
-HTTP/1.1 500     1.24 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     1.23 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     1.42 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     2.08 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.29 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     1.24 secs:     248 bytes ==> POST http://localhost:8081/orders
-
-* 요청을 어느정도 돌려보내고나니, 기존에 밀린 일들이 처리되었고, 회로를 닫아 요청을 다시 받기 시작
-
-HTTP/1.1 201     1.46 secs:     207 bytes ==> POST http://localhost:8081/orders  
-HTTP/1.1 201     1.33 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.36 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.63 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.65 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.69 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.71 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.71 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.74 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.76 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     1.79 secs:     207 bytes ==> POST http://localhost:8081/orders
-
-* 다시 요청이 쌓이기 시작하여 건당 처리시간이 610 밀리를 살짝 넘기기 시작 => 회로 열기 => 요청 실패처리
-
-HTTP/1.1 500     1.93 secs:     248 bytes ==> POST http://localhost:8081/orders    
-HTTP/1.1 500     1.92 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     1.93 secs:     248 bytes ==> POST http://localhost:8081/orders
-
-* 생각보다 빨리 상태 호전됨 - (건당 (쓰레드당) 처리시간이 610 밀리 미만으로 회복) => 요청 수락
-
-HTTP/1.1 201     2.24 secs:     207 bytes ==> POST http://localhost:8081/orders  
-HTTP/1.1 201     2.32 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.16 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.19 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.19 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.19 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.21 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.29 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.30 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.38 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.59 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.61 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.62 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     2.64 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.01 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.27 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.33 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.45 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.52 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.57 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.69 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.69 secs:     207 bytes ==> POST http://localhost:8081/orders
-
-* 이후 이러한 패턴이 계속 반복되면서 시스템은 도미노 현상이나 자원 소모의 폭주 없이 잘 운영됨
-
-
-HTTP/1.1 500     4.76 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.23 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.76 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.74 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.82 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.82 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.84 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.66 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     5.03 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.22 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.19 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.18 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.69 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.65 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     5.13 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.84 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.25 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.25 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.80 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.87 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.33 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.86 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.96 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.34 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 500     4.04 secs:     248 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.50 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.95 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.54 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     4.65 secs:     207 bytes ==> POST http://localhost:8081/orders
-
-
-:
-:
-
-Transactions:		        1025 hits
-Availability:		       63.55 %
-Elapsed time:		       59.78 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
-Successful transactions:        1025
-Failed transactions:	         588
-Longest transaction:	        9.20
+*Lifting the server siege...
+Transactions:		        8776 hits
+Availability:		      100.00 %
+Elapsed time:		       29.83 secs
+Data transferred:	        1.67 MB
+Response time:		        0.34 secs
+Transaction rate:	      294.20 trans/sec
+Throughput:		        0.06 MB/sec
+Concurrency:		       99.32
+Successful transactions:        8776
+Failed transactions:	           0
+Longest transaction:	        2.24
 Shortest transaction:	        0.00
 
 ```
-- 운영시스템은 죽지 않고 지속적으로 CB 에 의하여 적절히 회로가 열림과 닫힘이 벌어지면서 자원을 보호하고 있음을 보여줌. 하지만, 63.55% 가 성공하였고, 46%가 실패했다는 것은 고객 사용성에 있어 좋지 않기 때문에 Retry 설정과 동적 Scale out (replica의 자동적 추가,HPA) 을 통하여 시스템을 확장 해주는 후속처리가 필요.
+- 결재 서비스에 지연이 발생하는 경우 결재지연 메세지를 보여주고 장애에 분리되어 Avalablity가 100% 이다. 
 
-- Retry 의 설정 (istio)
-- Availability 가 높아진 것을 확인 (siege)
+- 예약 서비스(reservation)의 log에 아래에서 결재 지연 메세지를 확인한다.
+```
+              :
+              :
+@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
+########## 결제가 실패하였습니다 ############
+              :
+              :
+```
 
-### 오토스케일 아웃
-앞서 CB 는 시스템을 안정되게 운영할 수 있게 해줬지만 사용자의 요청을 100% 받아들여주지 못했기 때문에 이에 대한 보완책으로 자동화된 확장 기능을 적용하고자 한다. 
+- 시스템은 죽지 않고 지속적으로 과도한 부하시 CB 에 의하여 회로가 닫히고 결재 지연중 메세지를 보여주며 고객을 장애로 부터 격리시킴.
 
 
-- 결제서비스에 대한 replica 를 동적으로 늘려주도록 HPA 를 설정한다. 설정은 CPU 사용량이 15프로를 넘어서면 replica 를 10개까지 늘려준다:
+## 오토스케일 아웃
+- 예약서비스(Reservation)에 대해  CPU Load 50%를 넘어서면 Replica를 10까지 늘려준다. 
+  - buildspec-kubectl.yaml
 ```
-kubectl autoscale deploy pay --min=1 --max=10 --cpu-percent=15
+          cat <<EOF | kubectl apply -f -
+          apiVersion: autoscaling/v2beta2
+          kind: HorizontalPodAutoscaler
+          metadata:
+            name: reservation-hpa
+          spec:
+            scaleTargetRef:
+              apiVersion: apps/v1
+              kind: Deployment
+              name: $_POD_NAME
+            minReplicas: 1
+            maxReplicas: 10
+            metrics:
+            - type: Resource
+              resource:
+                name: cpu
+                target:
+                  type: Utilization
+                  averageUtilization: 50
+          EOF
 ```
-- CB 에서 했던 방식대로 워크로드를 2분 동안 걸어준다.
+
+- 예약서비스(reservation)에 대한 CPU Resouce를 500m으로 제한 한다.
+  - buildspec-kubectl.yaml
 ```
-siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"item": "chicken"}'
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 500Mi
+                      requests:
+                        cpu: 200m
+                        memory: 300Mi
 ```
-- 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다:
+- 예약서비스(reservation)에 임의의 CPU Load 코드를 주입힌다. 
 ```
-kubectl get deploy pay -w
+ReservationController.java
+
+            :
+            :
+	// CPU 부하 코드
+	@GetMapping("/hpa")
+	public String testHPA(){
+		double x = 0.0001;
+		String hostname = "";
+		for (int i = 0; i <= 1000000; i++){
+			x += java.lang.Math.sqrt(x);
+		}
+		try{
+			hostname = java.net.InetAddress.getLocalHost().getHostName();
+		} catch(java.net.UnknownHostException e){
+			e.printStackTrace();
+		}
+
+		return "====== HPA Test(" + hostname + ") ====== \n";
+	}	
+            :
+            :
 ```
-- 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:
+
+
+- Siege (로더제너레이터)를 설치하고 해당 컨테이너로 접속한다.
 ```
-NAME    DESIRED   CURRENT   UP-TO-DATE   AVAILABLE   AGE
-pay     1         1         1            1           17s
-pay     1         2         1            1           45s
-pay     1         4         1            1           1m
+> kubectl create deploy siege --image=ghcr.io/acmexii/siege-nginx:latest
+> kubectl exec pod/[SIEGE-POD객체] -it -- /bin/bash
+```
+
+- 예약 서비스(reseravation)에 워크로드를 10초 동안 걸어준다.
+```
+siege -c100 -t10S --content-type "application/json" 'http://reservation:8080/reservation/hpa'
+```
+- 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다 : 각각의 Terminal에 
+  - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:  
+```
+> kubectl get deploy reservation -w
+
+NAME          READY   UP-TO-DATE   AVAILABLE   AGE
+reservation   1/1     1            1           63m
+reservation   1/3     1            1           63m
+reservation   1/3     1            1           63m
+reservation   1/3     1            1           63m
+reservation   1/3     3            1           63m
 :
-```
-- siege 의 로그를 보아도 전체적인 성공률이 높아진 것을 확인 할 수 있다. 
-```
-Transactions:		        5078 hits
-Availability:		       92.45 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
+
+
+> watch -n 1 kubectl top po
+NAME                                 READY   STATUS    RESTARTS   AGE   IP               NODE                                              NOMINATED NODE   READINESS GATES
+pod/efs-provisioner-77c568c8-pmkxc   1/1     Running   0          16h   192.168.13.208   ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
+pod/gateway-564d85fbc4-dbhht         1/1     Running   0          70m   192.168.19.153   ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
+pod/pay-666cf5c795-blfqk             1/1     Running   0          31m   192.168.32.153   ip-192-168-61-25.ca-central-1.compute.internal    <none>           <none>
+pod/reservation-779f5585bc-6bdxg     1/1     Running   0          31m   192.168.28.44    ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
+pod/reservation-779f5585bc-hgjl9     0/1     Running   0          37s   192.168.52.66    ip-192-168-61-25.ca-central-1.compute.internal    <none>           <none>
+pod/reservation-779f5585bc-rshlh     0/1     Running   0          37s   192.168.95.48    ip-192-168-73-205.ca-central-1.compute.internal   <none>           <none>
+pod/siege-pvc                        1/1     Running   0          16h   192.168.1.22     ip-192-168-20-33.ca-central-1.compute.internal    <none>           <none>
+
+
+> watch -n 1 kubectl get all -o wide 
+NAME                             CPU(cores)   MEMORY(bytes)
+efs-provisioner-77c568c8-pmkxc   1m           10Mi
+gateway-564d85fbc4-dbhht         7m           150Mi
+pay-666cf5c795-blfqk             6m           254Mi
+reservation-779f5585bc-6bdxg     4m           280Mi
+reservation-779f5585bc-hgjl9     487m         154Mi
+reservation-779f5585bc-rshlh     483m         159Mi
+siege-pvc                        0m           6Mi
+store-7f9f99dbfc-tfsvr           5m           258Mi
+supplier-696bb6f7dd-xdpkc        5m           262Mi
+view-bdf94d47d-shvwc             4m           279Mi
+
 ```
 
 
 ## 무정지 재배포
+## Liveness & Readiness
+### ◆ Liveness- HTTP Probe
+- 시나리오
+  1. Reservation 서비스의 Liveness 설정을 확인힌다. 
+  2. Reservation 서비스의 Liveness Probe는 actuator의 health 상태 확인을 설정되어 있어 actuator/health 확인.
+  3. pod의 상태 모니터링
+  4. Reservation 서비스의 Liveness Probe인 actuator를 down 시켜 Reservation 서비스가 termination 되고 restart 되는 self healing을 확인한다. 
+  5. Reservation 서비스의 describe를 확인하여 Restart가 되는 부분을 확인한다.
 
-* 먼저 무정지 재배포가 100% 되는 것인지 확인하기 위해서 Autoscaler 이나 CB 설정을 제거함
+<br/>
 
-- seige 로 배포작업 직전에 워크로드를 모니터링 함.
+- Reservation 서비스의 Liveness probe 설정 확인
 ```
-siege -c100 -t120S -r10 --content-type "application/json" 'http://localhost:8081/orders POST {"item": "chicken"}'
+kubectl get deploy reservation -o yaml
 
-** SIEGE 4.0.5
-** Preparing 100 concurrent users for battle.
-The server is now under siege...
-
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.68 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-HTTP/1.1 201     0.70 secs:     207 bytes ==> POST http://localhost:8081/orders
-:
-
-```
-
-- 새버전으로의 배포 시작
-```
-kubectl set image ...
-```
-
-- seige 의 화면으로 넘어가서 Availability 가 100% 미만으로 떨어졌는지 확인
-```
-Transactions:		        3078 hits
-Availability:		       70.45 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
-
-```
-배포기간중 Availability 가 평소 100%에서 70% 대로 떨어지는 것을 확인. 원인은 쿠버네티스가 성급하게 새로 올려진 서비스를 READY 상태로 인식하여 서비스 유입을 진행한 것이기 때문. 이를 막기위해 Readiness Probe 를 설정함:
-
-```
-# deployment.yaml 의 readiness probe 의 설정:
-
-
-kubectl apply -f kubernetes/deployment.yaml
+                  :
+        livenessProbe:
+          failureThreshold: 5
+          httpGet:
+            path: /actuator/health
+            port: 8080
+            scheme: HTTP
+          initialDelaySeconds: 120
+          periodSeconds: 5
+          successThreshold: 1
+          timeoutSeconds: 2
+                  :
 ```
 
-- 동일한 시나리오로 재배포 한 후 Availability 확인:
+- Httpie를 사용하기 위해 Siege를 설치하고 해당 컨테이너로 접속한다.
 ```
-Transactions:		        3078 hits
-Availability:		       100 %
-Elapsed time:		       120 secs
-Data transferred:	        0.34 MB
-Response time:		        5.60 secs
-Transaction rate:	       17.15 trans/sec
-Throughput:		        0.01 MB/sec
-Concurrency:		       96.02
-
+> kubectl create deploy siege --image=ghcr.io/acmexii/siege-nginx:latest
+> kubectl exec pod/[SIEGE-POD객체] -it -- /bin/bash
 ```
 
-배포기간 동안 Availability 가 변화없기 때문에 무정지 재배포가 성공한 것으로 확인됨.
+- Liveness Probe 확인 
+```
+> http http://reservation:8080/actuator/health      # Liveness Probe 확인
+
+HTTP/1.1 200 
+Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
+Date: Tue, 07 Sep 2021 14:58:15 GMT
+Transfer-Encoding: chunked
+
+{
+    "status": "UP"
+}
+```
+
+- Liveness Probe Fail 설정 및 확인 
+  - Reservation Liveness Probe를 명시적으로 Fail 상태로 전환한다.
+```
+> http DELETE http://reservation:8080/healthcheck    #actuator health 를 DOWN 시킨다.
+> http http://reservation:8080/actuator/health
+HTTP/1.1 503 
+Connection: close
+Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
+Date: Wed, 08 Sep 2021 01:56:07 GMT
+Transfer-Encoding: chunked
+
+{
+    "status": "DOWN"
+}
+```
+
+- Probe Fail에 따른 쿠버네티스 동작확인  
+  - Reservation 서비스의 Liveness Probe가 /actuator/health의 상태가 DOWN이 된 것을 보고 restart를 진행함. 
+    - reservation pod의 RESTARTS가 1로 바뀐것을 확인. 
+    - describe 를 통해 해당 pod가 restart 된 것을 알 수 있다.
+```
+> kubectl get pod
+NAME                          READY   STATUS    RESTARTS
+gateway-5587878c8c-7rhx8      1/1     Running   0          8m26s
+pay-657d6ff8f5-wvmxs          1/1     Running   0          8m24s
+reservation-dc4ff786c-bxp6m   1/1     Running   1          8m23s
+siege-75d5587bf6-8xnmc        1/1     Running   0          6m31s
+store-6486b7565b-txjjr        1/1     Running   0          8m23s
+supplier-9bc6bc8b5-m4l8m      1/1     Running   0          8m23s
+
+
+
+> kubectl describe pod/reservation-dc4ff786c-bxp6m
+Events:
+  Type     Reason     Age                  From               Message
+  ----     ------     ----                 ----               -------
+  Normal   Scheduled  21m                  default-scheduler  Successfully assigned default/reservation-dc4ff786c-bxp6m to ip-192-168-50-127.ca-central-1.compute.internal
+  Normal   Pulling    21m                  kubelet            Pulling image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746"
+  Normal   Pulled     21m                  kubelet            Successfully pulled image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746" in 1.323451813s
+  Normal   Killing    15m                  kubelet            Container reservation failed liveness probe, will be restarted
+  Normal   Created    15m (x2 over 21m)    kubelet            Created container reservation
+  Normal   Started    15m (x2 over 21m)    kubelet            Started container reservation
+  Normal   Pulled     15m                  kubelet            Container image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746" already present on machine
+  Warning  Unhealthy  14m (x4 over 21m)    kubelet            Readiness probe failed: Get "http://192.168.37.58:8080/actuator/health": dial tcp 192.168.37.58:8080: connect: connection refused
+  Warning  Unhealthy  4m41s (x8 over 15m)  kubelet            Liveness probe failed: HTTP probe failed with statuscode: 503
+  Warning  Unhealthy  4m36s (x8 over 15m)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 503
+```
+
+### ◆ Rediness- HTTP Probe
+- 시나리오
+  1. 현재 구동중인 Reservation 서비스에 길게(3분) 부하를 준다. 
+  2. reservation pod의 상태 모니터링
+  3. AWS에 CodeBuild에 연결 되어있는 github의 코드를 commit한다.
+  4. Codebuild를 통해 새로운 버전의 Reservation이 배포 된다. 
+  5. pod 상태 모니터링에서 기존 Reservation 서비스가 Terminating 되고 새로운 Reservation 서비스가 Running하는 것을 확인한다.
+  6. Readness에 의해서 새로운 서비스가 정상 동작할때까지 이전 버전의 서비스가 동작하여 seieg의 Avality가 100%가 된다.
+
+<br/>
+
+- reservstion 서비스의 Readness probe  설정 확인
+  - buildspec_kubectl.yaml
+```
+                    readinessProbe:
+                      httpGet:
+                        path: /actuator/health
+                        port: 8080
+                      initialDelaySeconds: 10
+                      timeoutSeconds: 2
+                      periodSeconds: 5
+                      failureThreshold: 10
+```
+
+- 현재 구동중인 Reservation 서비스에 길게(3분) 부하를 준다. 
+```
+> siege -v -c1 -t120S http://reservation:8080/reservations
+```
+
+- pod의 상태 모니터링
+```
+> watch -n 1 kubectl get pod    ==> pod가 생성되고 소멸되는 과정 확인.
+
+NAME                          READY   STATUS    RESTARTS   AGE
+gateway-6bdf6cf865-n4b8v      1/1     Running   0          15m
+pay-5bdf5998d9-qpdtk          1/1     Running   0          14m
+reservation-c544fd6bd-47sm5   1/1     Running   0          13m
+siege-75d5587bf6-8xnmc        1/1     Running   0          93m
+store-546b7cd7c8-gghdv        1/1     Running   0          15m
+supplier-6477564dd4-tq9tt     1/1     Running   0          14m    
+```
+
+- AWS에 CodeBuild에 연결 되어있는 github의 코드를 commit한다.
+  Resevatio 서비스의 아무 코드나 수정하고 commit 한다. 
+  배포 될때까지 잠시 기다린다. 
+  Ex) buildspec-kubectl.yaml에 carrage return을  추가 commit 한다. 
+
+
+
+- pod 상태 모니터링에서 기존 Reservation 서비스가 Terminating 되고 새로운 Reservation 서비스가 Running하는 것을 확인한다.
+```
+Every 1.0s: kubectl get pod   
+
+NAME                           READY   STATUS    RESTARTS   AGE
+gateway-5c7f47c9c5-z5slx       0/1     Running   0          11s
+gateway-6bdf6cf865-n4b8v       1/1     Running   0          20m
+pay-5bdf5998d9-qpdtk           1/1     Running   0          19m
+pay-797f74998c-wh94q           0/1     Running   0          9s
+reservation-585667dc8c-wlmtb   0/1     Running   0          8s
+reservation-c544fd6bd-47sm5    1/1     Running   0          18m
+siege-75d5587bf6-8xnmc         1/1     Running   0          98m
+store-546b7cd7c8-gghdv         1/1     Running   0          20m
+store-774c6757bd-gh5hx         0/1     Running   0          10s
+supplier-6477564dd4-tq9tt      1/1     Running   0          19m
+supplier-7bc4ff789d-qgkwk      0/1     Running   0          9s
+```
+
+- Readness에 의해서 새로운 서비스가 정상 동작할때까지 이전 버전의 서비스가 동작하여 seieg의 Avalabilty가 100%가 된다.
+```
+Lifting the server siege...
+Transactions:		       18572 hits
+Availability:		      100.00 %
+Elapsed time:		      119.79 secs
+Data transferred:	        6.62 MB
+Response time:		        0.01 secs
+Transaction rate:	      155.04 trans/sec
+Throughput:		        0.06 MB/sec
+Concurrency:		        0.95
+Successful transactions:       18572
+Failed transactions:	           0
+Longest transaction:	        0.68
+Shortest transaction:	        0.00
+```
+
+## Persistant Volume Claim
+- 시나리오
+  1. EFS 생성 화면 캡쳐.
+  2. 등록된 provisoner / storageclass / pvc 확인.
+  3. 각 서비스의 buildspec_kubectl.yaml에 pvc 생성 정보 확인.
+  4. bash shell을 사용할 수 있는 pod를 동일한 PVC 사용할 수 있게 설정 후 배포하여 '/mnt/aws'에 각 서비스에서 생성한 파일을 확인. 
+  
+
+- EFS 등록 화면 추가..
+```
+이미지 추가.
+```
+
+- provisioner 확인
+```
+> kubectl get pod
+
+NAME                              READY   STATUS    RESTARTS   AGE
+efs-provisioner-5976978f5-cqbzq   1/1     Running   0          19s
+```
+
+- storageClass 등록, 조회
+```
+> kubectl get sc
+NAME            PROVISIONER             RECLAIMPOLICY   VOLUMEBINDINGMODE      ALLOWVOLUMEEXPANSION   AGE
+aws-efs         my-aws.com/aws-efs      Delete          Immediate              false                  14s
+gp2 (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   false                  27h
+```
+- pvc 확인
+```
+> kubectl get pvc
+> kubectl describe pvc
+  Type    Reason                 Age                From                                                                                     Message
+  ----    ------                 ----               ----                                                                                     -------
+  Normal  ExternalProvisioning   35s (x2 over 35s)  persistentvolume-controller                                                              waiting for a volume to be created, either by external provisioner "my-aws.com/aws-efs" or manually created by system administrator
+  Normal  Provisioning           35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  External provisioner is provisioning volume for claim "default/aws-efs"
+  Normal  ProvisioningSucceeded  35s                my-aws.com/aws-efs_efs-provisioner-5976978f5-cqbzq_5cde0b7c-906d-477e-9e02-5b4823a9ca5c  Successfully provisioned volume pvc-c770d8b7-ef09-4a19-903b-cced4daa9f1d
+```
+<br/>
+
+- 각 Deployment의 PVC 생성정보는 buildspec-kubeclt.yaml에 적용되어있다.
+```
+                    volumeMounts:
+                      - mountPath: "/mnt/aws"
+                        name: volume
+                        :
+                        :
+                        :
+                volumes:
+                  - name: volume
+                    persistentVolumeClaim:
+                      claimName: aws-efs
+```
+
+
+- 각 서비스의 Event 발생시 JSON 정보를 파일로 저장한다. 마지막 정보만 저정하기 위해 Overwirte하여 저장한다. 
+  - 아래와 같은 코드를 통하여 /mnt/aws의 경로에 파일을 저장한다. 
+```
+AbstractEvent.java
+
+    // PVC Test
+    public void saveJasonToPvc(String strJson){
+        File file = new File("/mnt/aws/xxxxxxxxed_json.txt");
+
+		try {
+			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+			writer.write(strJson);
+			writer.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+```
+
+- 각 서비스에서 저장한 Event 정보파일을 동일한 PVC를 사용하는 Pod를 생성하여 배포 후 /mnt/aws에 저장되어 있는지 확인. 
+```
+> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/pod-with-pvc.yaml
+> kubectl get pod
+> kubectl describe pod reservation
+> kubectl exec -it seieg -- /bin/bash
+> ls -al /mnt/aws
+
+total 20
+drwxrws--x 2 root 2000 6144 Sep 15 14:39 .
+drwxr-xr-x 1 root root   17 Sep 15 12:33 ..
+-rw-r--r-- 1 root 2000  154 Sep 15 14:37 payCancelled_json.txt
+-rw-r--r-- 1 root 2000   99 Sep 15 14:29 productDelivered_json.txt
+-rw-r--r-- 1 root 2000  158 Sep 15 14:36 productPickedupjson.txt
+-rw-r--r-- 1 root 2000   90 Sep 15 14:37 productReserved_json.txt
+
+```
+- 서비스 Event를 저장한 파일들을 확인 할 수 있다. 
+
+
+
+
+<br/>
 
 
 # 신규 개발 조직의 추가
