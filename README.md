@@ -114,20 +114,25 @@
 
 
 ## AS-IS 조직 (Horizontally-Aligned)
+
 <img width="1130" alt="2021-09-12 8 55 49" src="https://user-images.githubusercontent.com/89987635/132986657-418ebe58-2158-4f9e-a237-0bf980efb050.png">
 
 ## TO-BE 조직 (Vertically-Aligned)
+
 <img width="1093" alt="2021-09-12 11 13 12" src="https://user-images.githubusercontent.com/89987635/132991004-2fdfb1de-977f-4a64-8bf8-34d24f29c7e4.png">
 
 
 ## Event Storming 결과
+
 * MSAEz 로 모델링한 이벤트스토밍 결과: https://labs.msaez.io/#/storming/zm7538qsNkhoDMQ3F0AUMpn1wHS2/8e220fa460d7f3692354e798ad599a22
 
 
 ### 이벤트 도출
+
 <img width="1371" alt="2021-09-12 11 42 52" src="https://user-images.githubusercontent.com/89987635/132992113-eb9523cb-26be-4923-ac26-e79c145bdb60.png">
 
 ### 부적격 이벤트 탈락
+
 <img width="1371" alt="2021-09-12 11 43 07" src="https://user-images.githubusercontent.com/89987635/132992128-33fbe62e-2590-42e8-b05f-746ff75d9b95.png">
 
 - 과정중 도출된 잘못된 도메인 이벤트들을 걸러내는 작업을 수행함
@@ -137,25 +142,27 @@
 - Supplier > 출고가 취소됨 : 구현 범위 밖이라 제외, Supplier는 상품 출고 이력만 관리
 
 ### 액터, 커맨드 부착하여 읽기 좋게
-![image](https://user-images.githubusercontent.com/487999/79683614-4ee30f80-8266-11ea-9a50-68cdff2dcc46.png)
+
+<img width="1426" alt="2021-09-13 9 28 38" src="https://user-images.githubusercontent.com/89987635/133083587-d80e62bc-4e4e-486e-8a05-c44152bc5ec3.png">
 
 ### 어그리게잇으로 묶기
-![image](https://user-images.githubusercontent.com/487999/79683618-52769680-8266-11ea-9c21-48d6812444ba.png)
 
-    - app의 Order, store 의 주문처리, 결제의 결제이력은 그와 연결된 command 와 event 들에 의하여 트랜잭션이 유지되어야 하는 단위로 그들 끼리 묶어줌
+<img width="1500" alt="2021-09-13 10 01 42" src="https://user-images.githubusercontent.com/89987635/133088250-5f0c17ed-37ca-412d-9057-48c4ee99a085.png">
+
+- Reservation의 예약과 취소, Pay의 결제 요청, 결제 취소, Store의 상품 주문, 상품 픽업, 예약, 예약 취소, Supplier의 상품 출고의 command와 event 들에 의하여 트랜잭션이 유지되어야 하는 단위로 그들 끼리 묶어줌
 
 ### 바운디드 컨텍스트로 묶기
 
-![image](https://user-images.githubusercontent.com/487999/79683625-560a1d80-8266-11ea-9790-40d68a36d95d.png)
+<img width="1475" alt="2021-09-13 10 02 53" src="https://user-images.githubusercontent.com/89987635/133088393-55762696-6012-4e8e-8211-cba34cde5064.png">
 
     - 도메인 서열 분리 
-        - Core Domain:  app(front), store : 없어서는 안될 핵심 서비스이며, 연견 Up-time SLA 수준을 99.999% 목표, 배포주기는 app 의 경우 1주일 1회 미만, store 의 경우 1개월 1회 미만
-        - Supporting Domain:   marketing, customer : 경쟁력을 내기위한 서비스이며, SLA 수준은 연간 60% 이상 uptime 목표, 배포주기는 각 팀의 자율이나 표준 스프린트 주기가 1주일 이므로 1주일 1회 이상을 기준으로 함.
-        - General Domain:   pay : 결제서비스로 3rd Party 외부 서비스를 사용하는 것이 경쟁력이 높음 (핑크색으로 이후 전환할 예정)
+      - Core Domain:  Reservation, Store : 없어서는 안될 핵심 서비스이며, 연견 Up-time SLA 수준을 99.999% 목표, 배포주기는 의 경우 1주일 1회 미만
+      - Supporting Domain: Supplier : 경쟁력을 내기위한 서비스이며, SLA 수준은 연간 60% 이상 uptime 목표, 배포주기는 1주일 1회 이상을 기준으로 함.
+      - General Domain: PayHistory : 결제서비스로 3rd Party 외부 서비스를 사용하는 것이 경쟁력이 높음
 
-### 폴리시 부착 (괄호는 수행주체, 폴리시 부착을 둘째단계에서 해놔도 상관 없음. 전체 연계가 초기에 드러남)
+### 폴리시 부착 (괄호는 수행주체, 전체 연계가 초기에 드러남)
 
-![image](https://user-images.githubusercontent.com/487999/79683633-5aced180-8266-11ea-8f42-c769eb88dfb1.png)
+<img width="1539" alt="2021-09-13 10 25 34" src="https://user-images.githubusercontent.com/89987635/133091710-e3a6a95b-b353-482f-827a-9b2da02f4457.png">
 
 ### 폴리시의 이동과 컨텍스트 매핑 (점선은 Pub/Sub, 실선은 Req/Resp)
 
