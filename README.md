@@ -21,6 +21,7 @@
     - [CI/CD 설정](#cicd-설정)
     - [동기식 호출 / 서킷 브레이킹 / 장애격리](#동기식-호출--서킷-브레이킹--장애격리)
     - [오토스케일 아웃](#오토스케일-아웃)
+    - [Self-Healing](#self-healing)
     - [무정지 재배포](#무정지-재배포)
     - [Persistant Volume Claim](#persistant-volume-claim)
   - [신규 개발 조직의 추가](#신규-개발-조직의-추가)
@@ -733,18 +734,24 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
   - convenience-store
   - convenience-stock
   - convenience-view
+<br/>
 
-- 생성한 CodeBuild  이미지 캡쳐 Capture
 
 - github의 각 서비스의 서브 폴더에 buildspec-kubect.yaml 위치.
 
-![image](https://user-images.githubusercontent.com/89987635/133092812-8a5088b6-b271-455b-92b8-beed0b3cb4ea.png)
-![image](https://user-images.githubusercontent.com/89987635/133094765-be075fa4-4433-44c2-b163-1e101abc92a7.png)
+![image](https://user-images.githubusercontent.com/22004206/133250463-b7c80d2c-e58b-4329-8ded-dca2b146215a.png)
+![image](https://user-images.githubusercontent.com/22004206/133250705-66c3e747-e3aa-4aa5-90a0-1e9efb4210c5.png)
+![image](https://user-images.githubusercontent.com/22004206/133250824-3e9689f6-2327-45dd-8322-bacad102e1d3.png)
+![image](https://user-images.githubusercontent.com/22004206/133250923-f62f98bb-28bb-4dea-ab6f-6b6b9081c9c1.png)
+![image](https://user-images.githubusercontent.com/22004206/133251040-94926311-83d1-422e-95d9-7a8950227966.png)
 
 
-- 연결된 github에 Commit 진행시 codebuild 진행 여부 및 성공 확인 
-  - github 주소
-    - https://github.com/AndersonSKCC/convenience
+- 연결된 github에 Commit 진행시 6개의 서비스들 build 진행 여부 및 성공 확인 
+
+![image](https://user-images.githubusercontent.com/22004206/133251313-c2df253e-0b98-4234-84a2-c829ab39a829.png)
+
+![image](https://user-images.githubusercontent.com/22004206/133251727-70c8ce0e-edb7-46bd-8876-6d242e29b05a.png)
+
 
 -	배포된 6개의 Service  확인
 ```
@@ -901,43 +908,17 @@ Shortest transaction:	        0.00
           EOF
 ```
 
-- 예약서비스(reservation)에 대한 CPU Resouce를 500m으로 제한 한다.
+- 예약서비스(reservation)에 대한 CPU Resouce를 1000m으로 제한 한다.
   - buildspec-kubectl.yaml
 ```
                     resources:
                       limits:
-                        cpu: 500m
+                        cpu: 1000m
                         memory: 500Mi
                       requests:
-                        cpu: 200m
+                        cpu: 500m
                         memory: 300Mi
 ```
-- 예약서비스(reservation)에 임의의 CPU Load 코드를 주입힌다. 
-```
-ReservationController.java
-
-            :
-            :
-	// CPU 부하 코드
-	@GetMapping("/hpa")
-	public String testHPA(){
-		double x = 0.0001;
-		String hostname = "";
-		for (int i = 0; i <= 1000000; i++){
-			x += java.lang.Math.sqrt(x);
-		}
-		try{
-			hostname = java.net.InetAddress.getLocalHost().getHostName();
-		} catch(java.net.UnknownHostException e){
-			e.printStackTrace();
-		}
-
-		return "====== HPA Test(" + hostname + ") ====== \n";
-	}	
-            :
-            :
-```
-
 
 - Siege (로더제너레이터)를 설치하고 해당 컨테이너로 접속한다.
 ```
@@ -945,12 +926,13 @@ ReservationController.java
 > kubectl exec pod/[SIEGE-POD객체] -it -- /bin/bash
 ```
 
-- 예약 서비스(reseravation)에 워크로드를 10초 동안 걸어준다.
+- 예약 서비스(reseravation)에 워크로드를 동시 사용자 100명 60초 동안 진행한다.
 ```
-siege -c100 -t10S --content-type "application/json" 'http://reservation:8080/reservation/hpa'
+siege -c100 -t60S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 ```
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다 : 각각의 Terminal에 
-  - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다:  
+  - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다.
+  
 ```
 > kubectl get deploy reservation -w
 
@@ -987,11 +969,14 @@ store-7f9f99dbfc-tfsvr           5m           258Mi
 supplier-696bb6f7dd-xdpkc        5m           262Mi
 view-bdf94d47d-shvwc             4m           279Mi
 
+	
+> kubectl get hpa
+NAME              REFERENCE                TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
+reservation-hpa   Deployment/reservation   1%/50%    1         10        6          82m	
 ```
-
-
-## 무정지 재배포
-## Liveness & Readiness
+<br/>
+	
+## Self Healing
 ### ◆ Liveness- HTTP Probe
 - 시나리오
   1. Reservation 서비스의 Liveness 설정을 확인힌다. 
@@ -1088,6 +1073,8 @@ Events:
   Warning  Unhealthy  4m36s (x8 over 15m)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 503
 ```
 
+	
+## 무정지 재배포
 ### ◆ Rediness- HTTP Probe
 - 시나리오
   1. 현재 구동중인 Reservation 서비스에 길게(3분) 부하를 준다. 
@@ -1114,7 +1101,7 @@ Events:
 
 - 현재 구동중인 Reservation 서비스에 길게(3분) 부하를 준다. 
 ```
-> siege -v -c1 -t120S http://reservation:8080/reservations
+> siege -v -c1 -t120S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 ```
 
 - pod의 상태 모니터링
