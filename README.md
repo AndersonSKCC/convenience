@@ -645,7 +645,7 @@ public class PolicyHandler {
   }
 
 ```
-실제 구현을 하자면, 결제가 완료된 이후에 카톡 알림을 통해 예약이 완료되었다는 외부 이벤트를 보내고, 점주는 예약 상태를 Dashboard를 통해 확인할 수 있다.
+실제 구현을 하자면, 결제가 완료된 이후에 카톡 알림을 통해 예약이 완료되었다는 외부 이벤트를 보내고, 점장은 예약 상태를 Dashboard를 통해 확인할 수 있다.
   
 ```
 
@@ -712,6 +712,40 @@ mvn spring-boot:run
 GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯수만큼 줄어듬
 
 ```
+
+## Correlation (보상패턴) 구현
+
+결제 승인시 상품의 갯수를 차감하고, 결제 취소시 상품의 갯수를 원복해준다.
+
+```
+    @StreamListener(KafkaProcessor.INPUT)
+    public void wheneverPayRequested_Reserve(@Payload PayRequested payRequested){
+
+	...
+        
+        // 예약이 되면 상품의 보유 갯수를 줄여준다  
+        Product product = productRepository.findById(payRequested.getProductId()).orElseThrow(null);
+        product.setProductQty(product.getProductQty() - payRequested.getReserveQty());
+        productRepository.save(product);
+        
+    }
+    
+    
+    @StreamListener(KafkaProcessor.INPUT)
+    public void wheneverPayCancelled_ReservationCancel(@Payload PayCancelled payCancelled){
+
+        ...
+        
+        // 예약이 취소되는 상품의 보유 갯수를 늘려준다 
+        Product product = productRepository.findById(payCancelled.getProductId()).orElseThrow(null);
+        product.setProductQty(product.getProductQty() + payCancelled.getReserveQty());
+        productRepository.save(product);
+
+    }
+
+```
+
+
 
 
 # 운영
