@@ -1006,18 +1006,6 @@ view-bdc7b9ccd-w5ngd             1/1     Running   0          3m23s
 <img width="794" alt="스크린샷 2021-09-15 오후 3 32 43" src="https://user-images.githubusercontent.com/89987635/133385792-924fefb0-562f-4697-bdc6-67baba830247.png">
 <img width="710" alt="스크린샷 2021-09-15 오후 3 39 02" src="https://user-images.githubusercontent.com/89987635/133385810-3bb01bcf-f940-4f47-a035-82922ab02565.png">
 
-- pod의 상태 모니터링
-```
-> watch -n 1 kubectl get pod    ==> pod가 생성되고 소멸되는 과정 확인.
-
-NAME                          READY   STATUS    RESTARTS   AGE
-gateway-6bdf6cf865-n4b8v      1/1     Running   0          15m
-pay-5bdf5998d9-qpdtk          1/1     Running   0          14m
-reservation-c544fd6bd-47sm5   1/1     Running   0          13m
-siege-75d5587bf6-8xnmc        1/1     Running   0          93m
-store-546b7cd7c8-gghdv        1/1     Running   0          15m
-supplier-6477564dd4-tq9tt     1/1     Running   0          14m    
-```
 
 - AWS에 CodeBuild에 연결 되어있는 github의 코드를 commit한다.
   Resevatio 서비스의 아무 코드나 수정하고 commit 한다. 
@@ -1025,9 +1013,8 @@ supplier-6477564dd4-tq9tt     1/1     Running   0          14m
   Ex) buildspec-kubectl.yaml에 carrage return을  추가 commit 한다. 
 
 
-
 - pod 상태 모니터링에서 기존 Reservation 서비스가 Terminating 되고 새로운 Reservation 서비스가 Running하는 것을 확인한다.
-
+- pod의 상태 모니터링
 <img width="586" alt="스크린샷 2021-09-15 오후 4 59 23" src="https://user-images.githubusercontent.com/89987635/133394310-befb67aa-4384-40f3-a33c-974f1ee52d79.png">
 
 
