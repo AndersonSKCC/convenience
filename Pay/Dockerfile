@@ -1,4 +1,4 @@
-FROM 879772956301.dkr.ecr.ap-northeast-2.amazonaws.com/openjdk:8u212-jdk-alpine
+FROM midi79/openjdk:team01
 COPY target/*SNAPSHOT.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java","-Xmx400M","-Djava.security.egd=file:/dev/./urandom","-jar","/app.jar","--spring.profiles.active=docker"]
