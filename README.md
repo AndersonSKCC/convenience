@@ -722,17 +722,17 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
 - 레포지터리 생성 확인
   - 이미지 변경 필요.
 
-![image](https://user-images.githubusercontent.com/22004206/132270281-d9f0154e-ba48-442f-90f2-9208b6d1886e.png)
+<img width="2509" alt="스크린샷 2021-09-15 오전 11 25 27" src="https://user-images.githubusercontent.com/89987635/133383981-57d87ff8-8772-4d94-ba1a-cca5cf83cbcc.png">
 
 <br/>
 
 - 생성 할 CodeBuild
-  - convenience-gateway
-  - convenience-reservation
-  - convenience-pay
-  - convenience-store
-  - convenience-stock
-  - convenience-view
+  - team01-gateway
+  - team01-reservation
+  - team01-pay
+  - team01-store
+  - team01-stock01
+  - team01-view
 <br/>
 
 
@@ -747,22 +747,22 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
 
 - 연결된 github에 Commit 진행시 6개의 서비스들 build 진행 여부 및 성공 확인 
 
-![image](https://user-images.githubusercontent.com/22004206/133251313-c2df253e-0b98-4234-84a2-c829ab39a829.png)
-
-![image](https://user-images.githubusercontent.com/22004206/133251727-70c8ce0e-edb7-46bd-8876-6d242e29b05a.png)
+<img width="1187" alt="스크린샷 2021-09-15 오후 3 47 31" src="https://user-images.githubusercontent.com/89987635/133384246-cf1da089-5f5c-4c29-bb08-049979231eba.png">
 
 
 -	배포된 6개의 Service  확인
 ```
-> kubectl get all
+root@labs-1916923594:/home/project# kubectl get all
+NAME                                 READY   STATUS    RESTARTS   AGE
+pod/efs-provisioner-84b8576f-s5m2h   1/1     Running   0          4h28m
+pod/gateway-fb444ccb5-qzwpb          1/1     Running   0          15m
+pod/pay-d579c6997-rpcds              1/1     Running   0          10m
+pod/reservation-55547fd689-vcvq8     1/1     Running   0          10m
+pod/siege-pvc                        1/1     Running   0          65m
+pod/store-78c6cbd6c4-h4b8s           1/1     Running   0          10m
+pod/supplier-76fd6bbf4f-c6jbs        1/1     Running   0          15m
+pod/view-5c8788f97d-swclr            1/1     Running   0          10m
 
-NAME                          READY   STATUS    RESTARTS   AGE
-gateway-6bdf6cf865-n4b8v      1/1     Running   0          15m
-pay-5bdf5998d9-qpdtk          1/1     Running   0          14m
-reservation-c544fd6bd-47sm5   1/1     Running   0          13m
-siege-75d5587bf6-8xnmc        1/1     Running   0          93m
-store-546b7cd7c8-gghdv        1/1     Running   0          15m
-supplier-6477564dd4-tq9tt     1/1     Running   0          14m    
 ```
 
 
@@ -833,58 +833,17 @@ public class PayHistoryServiceImpl implements PayHistoryService {
 - 부하테스터 siege 툴을 통한 서킷 브레이커 동작 확인:
   - 동시사용자 100명, 60초 동안 실시
   - Reservation 서비스의 log 확인.
-```
-> siege -c100 -t60S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 
-** SIEGE 4.1.1
-** Preparing 100 concurrent users for battle.
-The server is now under siege...
-HTTP/1.1 201     2.19 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.20 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.21 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.22 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-HTTP/1.1 201     2.66 secs:     378 bytes ==> POST http://reservation:8080/reservation/order
-                                        
-                                        :
-                                        :
-                                        :
+<img width="2061" alt="스크린샷 2021-09-15 오후 3 07 23" src="https://user-images.githubusercontent.com/89987635/133384541-fabf95af-a968-491e-b782-14bbb16d9062.png">
 
-*Lifting the server siege...
-Transactions:		        8776 hits
-Availability:		      100.00 %
-Elapsed time:		       29.83 secs
-Data transferred:	        1.67 MB
-Response time:		        0.34 secs
-Transaction rate:	      294.20 trans/sec
-Throughput:		        0.06 MB/sec
-Concurrency:		       99.32
-Successful transactions:        8776
-Failed transactions:	           0
-Longest transaction:	        2.24
-Shortest transaction:	        0.00
-
-```
 - 결재 서비스에 지연이 발생하는 경우 결재지연 메세지를 보여주고 장애에 분리되어 Avalablity가 100% 이다. 
 
 - 예약 서비스(reservation)의 log에 아래에서 결재 지연 메세지를 확인한다.
-```
-              :
-              :
-@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
-@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
-@@@@@@@ 결재 지연중 입니다. @@@@@@@@@@@@
-########## 결제가 실패하였습니다 ############
-              :
-              :
-```
+
+<img width="1180" alt="스크린샷 2021-09-15 오후 3 06 12" src="https://user-images.githubusercontent.com/89987635/133384661-e8c55eac-215e-4d7b-be1c-c6f269541f5b.png">
 
 - 시스템은 죽지 않고 지속적으로 과도한 부하시 CB 에 의하여 회로가 닫히고 결재 지연중 메세지를 보여주며 고객을 장애로 부터 격리시킴.
+
 
 
 ## 오토스케일 아웃
@@ -927,57 +886,22 @@ Shortest transaction:	        0.00
 
 - Siege (로더제너레이터)를 설치하고 해당 컨테이너로 접속한다.
 ```
-> kubectl create deploy siege --image=ghcr.io/acmexii/siege-nginx:latest
-> kubectl exec pod/[SIEGE-POD객체] -it -- /bin/bash
+> kubectl create deploy siege-pvc --image=ghcr.io/acmexii/siege-nginx:latest
+> kubectl exec pod/siege-pvc -it -- /bin/bash
 ```
 
 - 예약 서비스(reseravation)에 워크로드를 동시 사용자 100명 60초 동안 진행한다.
 ```
-siege -c100 -t60S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
+siege -v -c100 -t60S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId": 222,"productName": "Galaxy Watch7","productPrice": 5000000,"customerId”:999,”customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 ```
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다 : 각각의 Terminal에 
   - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다.
   
-```
-> kubectl get deploy reservation -w
-
-NAME          READY   UP-TO-DATE   AVAILABLE   AGE
-reservation   1/1     1            1           63m
-reservation   1/3     1            1           63m
-reservation   1/3     1            1           63m
-reservation   1/3     1            1           63m
-reservation   1/3     3            1           63m
-:
-
-
-> watch -n 1 kubectl top po
-NAME                                 READY   STATUS    RESTARTS   AGE   IP               NODE                                              NOMINATED NODE   READINESS GATES
-pod/efs-provisioner-77c568c8-pmkxc   1/1     Running   0          16h   192.168.13.208   ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
-pod/gateway-564d85fbc4-dbhht         1/1     Running   0          70m   192.168.19.153   ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
-pod/pay-666cf5c795-blfqk             1/1     Running   0          31m   192.168.32.153   ip-192-168-61-25.ca-central-1.compute.internal    <none>           <none>
-pod/reservation-779f5585bc-6bdxg     1/1     Running   0          31m   192.168.28.44    ip-192-168-5-42.ca-central-1.compute.internal     <none>           <none>
-pod/reservation-779f5585bc-hgjl9     0/1     Running   0          37s   192.168.52.66    ip-192-168-61-25.ca-central-1.compute.internal    <none>           <none>
-pod/reservation-779f5585bc-rshlh     0/1     Running   0          37s   192.168.95.48    ip-192-168-73-205.ca-central-1.compute.internal   <none>           <none>
-pod/siege-pvc                        1/1     Running   0          16h   192.168.1.22     ip-192-168-20-33.ca-central-1.compute.internal    <none>           <none>
-
-
-> watch -n 1 kubectl get all -o wide 
-NAME                             CPU(cores)   MEMORY(bytes)
-efs-provisioner-77c568c8-pmkxc   1m           10Mi
-gateway-564d85fbc4-dbhht         7m           150Mi
-pay-666cf5c795-blfqk             6m           254Mi
-reservation-779f5585bc-6bdxg     4m           280Mi
-reservation-779f5585bc-hgjl9     487m         154Mi
-reservation-779f5585bc-rshlh     483m         159Mi
-siege-pvc                        0m           6Mi
-store-7f9f99dbfc-tfsvr           5m           258Mi
-supplier-696bb6f7dd-xdpkc        5m           262Mi
-view-bdf94d47d-shvwc             4m           279Mi
-
-	
-> kubectl get hpa
+<img width="582" alt="스크린샷 2021-09-15 오후 3 08 36" src="https://user-images.githubusercontent.com/89987635/133384946-a6eedf1e-660e-4064-b1aa-d798c0a8a37a.png">  
+```  	
+root@labs-1916923594:/home/project# kubectl get hpa
 NAME              REFERENCE                TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
-reservation-hpa   Deployment/reservation   1%/50%    1         10        6          82m	
+reservation-hpa   Deployment/reservation   1%/50%    1         10        1          138m
 ```
 <br/>
 	
@@ -1017,34 +941,14 @@ kubectl get deploy reservation -o yaml
 ```
 
 - Liveness Probe 확인 
-```
-> http http://reservation:8080/actuator/health      # Liveness Probe 확인
 
-HTTP/1.1 200 
-Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
-Date: Tue, 07 Sep 2021 14:58:15 GMT
-Transfer-Encoding: chunked
-
-{
-    "status": "UP"
-}
-```
+<img width="582" alt="스크린샷 2021-09-15 오후 3 11 13" src="https://user-images.githubusercontent.com/89987635/133385107-d191cd39-9246-4698-9a6b-4eb1f35a8ecb.png">
 
 - Liveness Probe Fail 설정 및 확인 
   - Reservation Liveness Probe를 명시적으로 Fail 상태로 전환한다.
-```
-> http DELETE http://reservation:8080/healthcheck    #actuator health 를 DOWN 시킨다.
-> http http://reservation:8080/actuator/health
-HTTP/1.1 503 
-Connection: close
-Content-Type: application/vnd.spring-boot.actuator.v2+json;charset=UTF-8
-Date: Wed, 08 Sep 2021 01:56:07 GMT
-Transfer-Encoding: chunked
 
-{
-    "status": "DOWN"
-}
-```
+<img width="582" alt="스크린샷 2021-09-15 오후 3 14 01" src="https://user-images.githubusercontent.com/89987635/133385278-a7c33be3-95c9-40f2-bc88-78897af82524.png">
+
 
 - Probe Fail에 따른 쿠버네티스 동작확인  
   - Reservation 서비스의 Liveness Probe가 /actuator/health의 상태가 DOWN이 된 것을 보고 restart를 진행함. 
@@ -1059,7 +963,6 @@ reservation-dc4ff786c-bxp6m   1/1     Running   1          8m23s
 siege-75d5587bf6-8xnmc        1/1     Running   0          6m31s
 store-6486b7565b-txjjr        1/1     Running   0          8m23s
 supplier-9bc6bc8b5-m4l8m      1/1     Running   0          8m23s
-
 
 
 > kubectl describe pod/reservation-dc4ff786c-bxp6m
@@ -1106,8 +1009,10 @@ Events:
 
 - 현재 구동중인 Reservation 서비스에 길게(2분) 부하를 준다. 
 ```
-> siege -v -c1 -t120S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
+> siege -v -c1 -t120S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId": 222,"productName": "Galaxy Watch7","productPrice": 5000000,"customerId”:999,”customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 ```
+<img width="794" alt="스크린샷 2021-09-15 오후 3 32 43" src="https://user-images.githubusercontent.com/89987635/133385792-924fefb0-562f-4697-bdc6-67baba830247.png">
+<img width="710" alt="스크린샷 2021-09-15 오후 3 39 02" src="https://user-images.githubusercontent.com/89987635/133385810-3bb01bcf-f940-4f47-a035-82922ab02565.png">
 
 - pod의 상태 모니터링
 ```
@@ -1279,22 +1184,10 @@ public void saveJasonToPvc(String strJson){
 ```
 
 - 각 서비스에서 저장한 Event 정보파일을 동일한 PVC를 사용하는 Pod를 생성하여 배포 후 /mnt/aws에 저장되어 있는지 확인. 
-```
-> kubectl apply -f kubectl apply -f https://raw.githubusercontent.com/djjoung/convenience/main/yaml/pod-with-pvc.yaml
-> kubectl get pod
-> kubectl describe pod reservation
-> kubectl exec -it seieg -- /bin/bash
-> ls -al /mnt/aws
 
-total 20
-drwxrws--x 2 root 2000 6144 Sep 15 14:39 .
-drwxr-xr-x 1 root root   17 Sep 15 12:33 ..
--rw-r--r-- 1 root 2000  154 Sep 15 14:37 payCancelled_json.txt
--rw-r--r-- 1 root 2000   99 Sep 15 14:29 productDelivered_json.txt
--rw-r--r-- 1 root 2000  158 Sep 15 14:36 productPickedupjson.txt
--rw-r--r-- 1 root 2000   90 Sep 15 14:37 productReserved_json.txt
+<img width="1115" alt="스크린샷 2021-09-15 오후 3 42 05" src="https://user-images.githubusercontent.com/89987635/133385983-48f1a1d1-2c58-4a34-9c32-ba9d6a5f8b50.png">
 
-```
+
 - 서비스 Event를 저장한 파일들을 확인 할 수 있다. 
 
 
