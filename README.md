@@ -1031,23 +1031,6 @@ supplier-6477564dd4-tq9tt     1/1     Running   0          14m
 <img width="586" alt="스크린샷 2021-09-15 오후 4 59 23" src="https://user-images.githubusercontent.com/89987635/133394310-befb67aa-4384-40f3-a33c-974f1ee52d79.png">
 
 
-- Readness에 의해서 새로운 서비스가 정상 동작할때까지 이전 버전의 서비스가 동작하여 seieg의 Avalabilty가 100%가 된다.
-```
-Lifting the server siege...
-Transactions:		       18572 hits
-Availability:		      100.00 %
-Elapsed time:		      119.79 secs
-Data transferred:	        6.62 MB
-Response time:		        0.01 secs
-Transaction rate:	      155.04 trans/sec
-Throughput:		        0.06 MB/sec
-Concurrency:		        0.95
-Successful transactions:       18572
-Failed transactions:	           0
-Longest transaction:	        0.68
-Shortest transaction:	        0.00
-```
-
 ## Persistant Volume Claim
 - 시나리오
   1. EFS 생성 화면 캡쳐.
