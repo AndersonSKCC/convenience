@@ -7,24 +7,25 @@
 
 # Table of contents
 
-- [편의점](#---)
-  - [서비스 시나리오](#서비스-시나리오)
-  - [체크포인트](#체크포인트)
-  - [분석/설계](#분석설계)
-  - [구현:](#구현-)
-    - [DDD 의 적용](#ddd-의-적용)
-    - [폴리글랏 퍼시스턴스](#폴리글랏-퍼시스턴스)
-    - [폴리글랏 프로그래밍](#폴리글랏-프로그래밍)
-    - [동기식 호출 과 Fallback 처리](#동기식-호출-과-Fallback-처리)
-    - [비동기식 호출 과 Eventual Consistency](#비동기식-호출-과-Eventual-Consistency)
+- [편의점]
+  - [서비스 시나리오]
+  - [체크포인트]
+  - [분석/설계]
+  - [구현:]
+    - [DDD 의 적용]
+    - [폴리글랏 퍼시스턴스]
+    - [폴리글랏 프로그래밍]
+    - [동기식 호출 과 Fallback 처리]
+    - [비동기식 호출 과 Eventual Consistency]
+    - [보상 패턴]
   - [운영](#운영)
-    - [CI/CD 설정](#cicd-설정)
-    - [동기식 호출 / 서킷 브레이킹 / 장애격리](#동기식-호출--서킷-브레이킹--장애격리)
-    - [오토스케일 아웃](#오토스케일-아웃)
-    - [Self-Healing](#self-healing)
-    - [무정지 재배포](#무정지-재배포)
-    - [Persistant Volume Claim](#persistant-volume-claim)
-  - [신규 개발 조직의 추가](#신규-개발-조직의-추가)
+    - [CI/CD 설정]
+    - [동기식 호출 / 서킷 브레이킹 / 장애격리]
+    - [오토스케일 아웃]
+    - [Self-Healing]
+    - [무정지 재배포]
+    - [Persistant Volume Claim]
+
 
 # 서비스 시나리오
 
@@ -50,8 +51,8 @@
     1. 상점의 기능이 동작하지 않아도 예약은 받아야 한다. - Event Driven
     1. 예약 주문이 많으면 주문을 잠시후에 하도록 유도해야 한다. - Circuit Break
 1. 성능
-    1. 고객이 예약 현황 및 상태 프론트엔드에서 조회할 수 있어야 한다.  CQRS
-    1. 예약한 상품의 상태가 바뀔 때마다 카톡 등으로 알림을 줄 수 있어야 한다  Event driven
+    1. 고객이 예약 현황 및 상태 프론트엔드에서 조회할 수 있어야 한다. - CQRS
+    1. 예약한 상품의 상태가 바뀔 때마다 카톡 등으로 알림을 줄 수 있어야 한다 - Event driven
     
 
 
@@ -718,30 +719,30 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
 결제 승인시 상품의 갯수를 차감하고, 결제 취소시 상품의 갯수를 원복해준다.
 
 ```
-    @StreamListener(KafkaProcessor.INPUT)
-    public void wheneverPayRequested_Reserve(@Payload PayRequested payRequested){
+@StreamListener(KafkaProcessor.INPUT)
+public void wheneverPayRequested_Reserve(@Payload PayRequested payRequested){
 
-	...
+  ...
         
-        // 예약이 되면 상품의 보유 갯수를 줄여준다  
-        Product product = productRepository.findById(payRequested.getProductId()).orElseThrow(null);
-        product.setProductQty(product.getProductQty() - payRequested.getReserveQty());
-        productRepository.save(product);
+    // 예약이 되면 상품의 보유 갯수를 줄여준다  
+    Product product = productRepository.findById(payRequested.getProductId()).orElseThrow(null);
+    product.setProductQty(product.getProductQty() - payRequested.getReserveQty());
+    productRepository.save(product);
         
-    }
+}
     
     
-    @StreamListener(KafkaProcessor.INPUT)
-    public void wheneverPayCancelled_ReservationCancel(@Payload PayCancelled payCancelled){
+@StreamListener(KafkaProcessor.INPUT)
+public void wheneverPayCancelled_ReservationCancel(@Payload PayCancelled payCancelled){
 
-        ...
-        
-        // 예약이 취소되는 상품의 보유 갯수를 늘려준다 
-        Product product = productRepository.findById(payCancelled.getProductId()).orElseThrow(null);
-        product.setProductQty(product.getProductQty() + payCancelled.getReserveQty());
-        productRepository.save(product);
+    ...
+       
+    // 예약이 취소되는 상품의 보유 갯수를 늘려준다 
+    Product product = productRepository.findById(payCancelled.getProductId()).orElseThrow(null);
+    product.setProductQty(product.getProductQty() + payCancelled.getReserveQty());
+    productRepository.save(product);
 
-    }
+}
 
 ```
 
