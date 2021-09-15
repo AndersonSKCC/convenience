@@ -101,16 +101,15 @@
     - 각 마이크로 서비스들이 각자의 저장소 구조를 자율적으로 채택하고 각자의 저장소 유형 (RDB, NoSQL, File System 등)을 선택하여 구현하였는가?
   - API 게이트웨이
     - API GW를 통하여 마이크로 서비스들의 집입점을 통일할 수 있는가?
-    - 게이트웨이와 인증서버(OAuth), JWT 토큰 인증을 통하여 마이크로서비스들을 보호할 수 있는가?
+
 - 운영
   - SLA 준수
     - 셀프힐링: Liveness Probe 를 통하여 어떠한 서비스의 health 상태가 지속적으로 저하됨에 따라 어떠한 임계치에서 pod 가 재생되는 것을 증명할 수 있는가?
     - 서킷브레이커, 레이트리밋 등을 통한 장애격리와 성능효율을 높힐 수 있는가?
     - 오토스케일러 (HPA) 를 설정하여 확장적 운영이 가능한가?
-    - 모니터링, 앨럿팅: 
-  - 무정지 운영 CI/CD (10)
+  - 무정지 운영 CI/CD
     - Readiness Probe 의 설정과 Rolling update을 통하여 신규 버전이 완전히 서비스를 받을 수 있는 상태일때 신규버전의 서비스로 전환됨을 siege 등으로 증명 
-    - Contract Test :  자동화된 경계 테스트를 통하여 구현 오류나 API 계약위반를 미리 차단 가능한가?
+
 
 
 # 분석/설계
@@ -785,6 +784,8 @@ supplier-6477564dd4-tq9tt     1/1     Running   0          14m
 
 - Hystrix 를 설정:  요청처리 쓰레드에서 처리시간이 610 밀리가 넘어서기 시작하여 어느정도 유지되면 CB 회로가 닫히고 결재 로직 대신 fallback으로 결재 지연 메세지 보여줌으로 장애 격리.
 ```
+# application.yml
+
 feign:
   hystrix:
     enabled: true
@@ -795,22 +796,26 @@ hystrix:
     default:
       execution.isolation.thread.timeoutInMilliseconds: 610
 ```
-- Pay 서비스에 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게
-  - PayHistoryController.java에 아래 코드 추가
+- Pay 서비스에 임의 부하 처리 - 400 밀리에서 증감 220 밀리 정도 왔다갔다 하게 아래 코드 추가
 ```
-        try {
-            Thread.currentThread().sleep((long) (400 + Math.random() * 220));
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+# PayHisotryController.java
+
+try {
+    Thread.currentThread().sleep((long) (400 + Math.random() * 220));
+} catch (InterruptedException e) {
+    e.printStackTrace();
+}
 ```
-- Resevation 서비스에 FeignClient fallback 추가
-  - PayHistoryService.java에 아래 코드 추가.
+- Resevation 서비스에 FeignClient fallback 코드 추가.
 ```
+# PayHistoryService.java
+
 @FeignClient(name ="delivery", url="${api.url.pay}", fallback = PayHistoryServiceImpl.class)
 ```
-- - PayHistoryServiceImple.java에 아래 코드 추가.
+
 ```
+# PayHistoryServiceImple.java
+
 @Service
 public class PayHistoryServiceImpl implements PayHistoryService {
     /**
@@ -1099,7 +1104,7 @@ Events:
                       failureThreshold: 10
 ```
 
-- 현재 구동중인 Reservation 서비스에 길게(3분) 부하를 준다. 
+- 현재 구동중인 Reservation 서비스에 길게(2분) 부하를 준다. 
 ```
 > siege -v -c1 -t120S --content-type "application/json" 'http://reservation:8080/reservation/order POST {"productId":1,"productName":"Milk","productPrice":1200,"customerId":2,"customerName":"Sam","customerPhone":"010-9837-0279","qty":2}'
 ```
@@ -1217,20 +1222,60 @@ gp2 (default)   kubernetes.io/aws-ebs   Delete          WaitForFirstConsumer   f
 - 각 서비스의 Event 발생시 JSON 정보를 파일로 저장한다. 마지막 정보만 저정하기 위해 Overwirte하여 저장한다. 
   - 아래와 같은 코드를 통하여 /mnt/aws의 경로에 파일을 저장한다. 
 ```
-AbstractEvent.java
+# AbstractEvent.java
 
-    // PVC Test
-    public void saveJasonToPvc(String strJson){
-        File file = new File("/mnt/aws/xxxxxxxxed_json.txt");
+// PVC Test
+public void saveJasonToPvc(String strJson){
+    File file;
 
-		try {
-			BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-			writer.write(strJson);
-			writer.close();
-		} catch (IOException e) {
-			e.printStackTrace();
-		}
-	}
+    if (strJson.equals("CANCEL")){
+    file = new File("/mnt/aws/reservationCancelled_json.txt");
+    }else{
+        file = new File("/mnt/aws/productReserved_json.txt");
+    }
+
+    try {
+      BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+      writer.write(strJson);
+      writer.close();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+} 
+
+
+public void saveJasonToPvc(String strJson){
+    File file;
+
+    if (strJson.equals("RESERVE")){
+    file = new File("/mnt/aws/payRequested_json.txt");
+    }else{
+        file = new File("/mnt/aws/payCancelled_json.txt");
+    }
+
+    try {
+      BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+      writer.write(strJson);
+      writer.close();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+}
+
+
+// PVC Test
+public void saveJasonToPvc(String strJson){
+    
+    File file = new File("/mnt/aws/productPickedupjson.txt");
+
+    try {
+      BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+      writer.write(strJson);
+      writer.close();
+    } catch (IOException e) {
+      e.printStackTrace();
+    }
+}  
 ```
 
 - 각 서비스에서 저장한 Event 정보파일을 동일한 PVC를 사용하는 Pod를 생성하여 배포 후 /mnt/aws에 저장되어 있는지 확인. 
@@ -1256,70 +1301,3 @@ drwxr-xr-x 1 root root   17 Sep 15 12:33 ..
 
 
 <br/>
-
-
-# 신규 개발 조직의 추가
-
-  ![image](https://user-images.githubusercontent.com/487999/79684133-1d6c4300-826a-11ea-94a2-602e61814ebf.png)
-
-
-## 마케팅팀의 추가
-    - KPI: 신규 고객의 유입률 증대와 기존 고객의 충성도 향상
-    - 구현계획 마이크로 서비스: 기존 customer 마이크로 서비스를 인수하며, 고객에 음식 및 맛집 추천 서비스 등을 제공할 예정
-
-## 이벤트 스토밍 
-    ![image](https://user-images.githubusercontent.com/487999/79685356-2b729180-8273-11ea-9361-a434065f2249.png)
-
-
-## 헥사고날 아키텍처 변화 
-
-![image](https://user-images.githubusercontent.com/487999/79685243-1d704100-8272-11ea-8ef6-f4869c509996.png)
-
-## 구현  
-
-기존의 마이크로 서비스에 수정을 발생시키지 않도록 Inbund 요청을 REST 가 아닌 Event 를 Subscribe 하는 방식으로 구현. 기존 마이크로 서비스에 대하여 아키텍처나 기존 마이크로 서비스들의 데이터베이스 구조와 관계없이 추가됨. 
-
-## 운영과 Retirement
-
-Request/Response 방식으로 구현하지 않았기 때문에 서비스가 더이상 불필요해져도 Deployment 에서 제거되면 기존 마이크로 서비스에 어떤 영향도 주지 않음.
-
-* [비교] 결제 (pay) 마이크로서비스의 경우 API 변화나 Retire 시에 app(주문) 마이크로 서비스의 변경을 초래함:
-
-예) API 변화시
-```
-# Order.java (Entity)
-
-    @PostPersist
-    public void onPostPersist(){
-
-        fooddelivery.external.결제이력 pay = new fooddelivery.external.결제이력();
-        pay.setOrderId(getOrderId());
-        
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제(pay);
-
-                --> 
-
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제2(pay);
-
-    }
-```
-
-예) Retire 시
-```
-# Order.java (Entity)
-
-    @PostPersist
-    public void onPostPersist(){
-
-        /**
-        fooddelivery.external.결제이력 pay = new fooddelivery.external.결제이력();
-        pay.setOrderId(getOrderId());
-        
-        Application.applicationContext.getBean(fooddelivery.external.결제이력Service.class)
-                .결제(pay);
-
-        **/
-    }
-```
