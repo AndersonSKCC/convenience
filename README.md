@@ -958,31 +958,20 @@ kubectl get deploy reservation -o yaml
     - reservation pod의 RESTARTS가 1로 바뀐것을 확인. 
     - describe 를 통해 해당 pod가 restart 된 것을 알 수 있다.
 ```
-> kubectl get pod
-NAME                          READY   STATUS    RESTARTS
-gateway-5587878c8c-7rhx8      1/1     Running   0          8m26s
-pay-657d6ff8f5-wvmxs          1/1     Running   0          8m24s
-reservation-dc4ff786c-bxp6m   1/1     Running   1          8m23s
-siege-75d5587bf6-8xnmc        1/1     Running   0          6m31s
-store-6486b7565b-txjjr        1/1     Running   0          8m23s
-supplier-9bc6bc8b5-m4l8m      1/1     Running   0          8m23s
+Every 1.0s: kubectl get pod                                        labs-1916923594: Wed Sep 15 07:08:41 2021
 
+NAME                             READY   STATUS    RESTARTS   AGE
+efs-provisioner-84b8576f-s5m2h   1/1     Running   0          4h49m
+gateway-f48b5bc7c-k47sf          1/1     Running   0          2m27s
+pay-5bbf487cf7-jw6mg             1/1     Running   0          3m23s
+reservation-db4c66457-z8z4q      0/1     Running   1          3m21s
+siege-pvc                        1/1     Running   0          85m
+store-56fbfc5d7d-hlcpm           1/1     Running   0          3m18s
+supplier-58c6f85cb9-54tbc        1/1     Running   0          2m22s
+view-bdc7b9ccd-w5ngd             1/1     Running   0          3m23s
 
-> kubectl describe pod/reservation-dc4ff786c-bxp6m
-Events:
-  Type     Reason     Age                  From               Message
-  ----     ------     ----                 ----               -------
-  Normal   Scheduled  21m                  default-scheduler  Successfully assigned default/reservation-dc4ff786c-bxp6m to ip-192-168-50-127.ca-central-1.compute.internal
-  Normal   Pulling    21m                  kubelet            Pulling image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746"
-  Normal   Pulled     21m                  kubelet            Successfully pulled image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746" in 1.323451813s
-  Normal   Killing    15m                  kubelet            Container reservation failed liveness probe, will be restarted
-  Normal   Created    15m (x2 over 21m)    kubelet            Created container reservation
-  Normal   Started    15m (x2 over 21m)    kubelet            Started container reservation
-  Normal   Pulled     15m                  kubelet            Container image "422489764856.dkr.ecr.ca-central-1.amazonaws.com/user-dongjin-reservation:6a6573b58027490f3d56be72e85d445d6da87746" already present on machine
-  Warning  Unhealthy  14m (x4 over 21m)    kubelet            Readiness probe failed: Get "http://192.168.37.58:8080/actuator/health": dial tcp 192.168.37.58:8080: connect: connection refused
-  Warning  Unhealthy  4m41s (x8 over 15m)  kubelet            Liveness probe failed: HTTP probe failed with statuscode: 503
-  Warning  Unhealthy  4m36s (x8 over 15m)  kubelet            Readiness probe failed: HTTP probe failed with statuscode: 503
 ```
+<img width="1962" alt="스크린샷 2021-09-15 오후 4 11 13" src="https://user-images.githubusercontent.com/89987635/133387508-9b1d5641-48c8-481d-8fb7-0b6d14f967ce.png">
 
 	
 ## 무정지 재배포
@@ -1038,22 +1027,9 @@ supplier-6477564dd4-tq9tt     1/1     Running   0          14m
 
 
 - pod 상태 모니터링에서 기존 Reservation 서비스가 Terminating 되고 새로운 Reservation 서비스가 Running하는 것을 확인한다.
-```
-Every 1.0s: kubectl get pod   
 
-NAME                           READY   STATUS    RESTARTS   AGE
-gateway-5c7f47c9c5-z5slx       0/1     Running   0          11s
-gateway-6bdf6cf865-n4b8v       1/1     Running   0          20m
-pay-5bdf5998d9-qpdtk           1/1     Running   0          19m
-pay-797f74998c-wh94q           0/1     Running   0          9s
-reservation-585667dc8c-wlmtb   0/1     Running   0          8s
-reservation-c544fd6bd-47sm5    1/1     Running   0          18m
-siege-75d5587bf6-8xnmc         1/1     Running   0          98m
-store-546b7cd7c8-gghdv         1/1     Running   0          20m
-store-774c6757bd-gh5hx         0/1     Running   0          10s
-supplier-6477564dd4-tq9tt      1/1     Running   0          19m
-supplier-7bc4ff789d-qgkwk      0/1     Running   0          9s
-```
+<img width="586" alt="스크린샷 2021-09-15 오후 4 59 23" src="https://user-images.githubusercontent.com/89987635/133394310-befb67aa-4384-40f3-a33c-974f1ee52d79.png">
+
 
 - Readness에 의해서 새로운 서비스가 정상 동작할때까지 이전 버전의 서비스가 동작하여 seieg의 Avalabilty가 100%가 된다.
 ```
