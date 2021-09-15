@@ -829,6 +829,8 @@ spring:
 
 ```
 
+<img width="1121" alt="스크린샷 2021-09-15 오후 9 59 25" src="https://user-images.githubusercontent.com/89987635/133437863-c26ca739-dd58-4b48-bb7e-f46cc195cc7d.png">
+
 
 ## 동기식 호출 / 서킷 브레이킹 / 장애격리
 - 시나리오
