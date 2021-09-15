@@ -18,14 +18,13 @@ public class PayHistoryController {
 	public boolean requestPay(@RequestBody PayHistory payHistory) {
 		
 		PayHistory savedPayHistory = payhistoryRepository.save(payHistory);
-		/*
+
         // CB test 용 지연 코드.
         try {
             Thread.currentThread().sleep((long) (400 + Math.random() * 220));
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }		
-		*/
+	} catch (InterruptedException e) {
+		e.printStackTrace();
+	}		
 		return true;
 	}
 }
