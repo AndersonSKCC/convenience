@@ -896,11 +896,15 @@ siege -v -c100 -t60S --content-type "application/json" 'http://reservation:8080/
 - 오토스케일이 어떻게 되고 있는지 모니터링을 걸어둔다 : 각각의 Terminal에 
   - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다.
   
-<img width="582" alt="스크린샷 2021-09-15 오후 3 08 36" src="https://user-images.githubusercontent.com/89987635/133384946-a6eedf1e-660e-4064-b1aa-d798c0a8a37a.png">  
+<img width="582" alt="스크린샷 2021-09-15 오후 3 08 36" src="https://user-images.githubusercontent.com/89987635/133384946-a6eedf1e-660e-4064-b1aa-d798c0a8a37a.png"> 
+
+
 ```	
+
 root@labs-1916923594:/home/project# kubectl get hpa
 NAME              REFERENCE                TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
 reservation-hpa   Deployment/reservation   1%/50%    1         10        1          138m
+
 ```
 
 	
