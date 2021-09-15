@@ -720,7 +720,6 @@ GET http://localhost:8083/product/list     # 상품의 갯수가 예약한 갯�
 각 구현체들은 각자의 AWS의 ECR 에 구성되었고, 사용한 CI/CD 플랫폼은 AWS-CodeBuild를 사용하였으며, pipeline build script 는 각 프로젝트 폴더 이하에 buildspec-kubectl.yaml 에 포함되었다.
 
 - 레포지터리 생성 확인
-  - 이미지 변경 필요.
 
 <img width="2509" alt="스크린샷 2021-09-15 오전 11 25 27" src="https://user-images.githubusercontent.com/89987635/133383981-57d87ff8-8772-4d94-ba1a-cca5cf83cbcc.png">
 
@@ -898,12 +897,12 @@ siege -v -c100 -t60S --content-type "application/json" 'http://reservation:8080/
   - 어느정도 시간이 흐른 후 (약 30초) 스케일 아웃이 벌어지는 것을 확인할 수 있다.
   
 <img width="582" alt="스크린샷 2021-09-15 오후 3 08 36" src="https://user-images.githubusercontent.com/89987635/133384946-a6eedf1e-660e-4064-b1aa-d798c0a8a37a.png">  
-```  	
+```	
 root@labs-1916923594:/home/project# kubectl get hpa
 NAME              REFERENCE                TARGETS   MINPODS   MAXPODS   REPLICAS   AGE
 reservation-hpa   Deployment/reservation   1%/50%    1         10        1          138m
 ```
-<br/>
+
 	
 ## Self Healing
 ### ◆ Liveness- HTTP Probe
