@@ -33,6 +33,7 @@ public class ReservationController {
 	@GetMapping("/get/{id}")
 	public ResponseEntity<Reservation> getReservation(@PathVariable Long id) {
 		Reservation reservation = reservationRepository.findById(id).orElseThrow(null);
+		
 		return ResponseEntity.ok(reservation);
 	}	
 	
