@@ -765,6 +765,69 @@ pod/view-5c8788f97d-swclr            1/1     Running   0          10m
 ```
 
 
+## API Gateway 설정
+
+- 단일 진입점을 구성하기 위해 Spring Cloud Gateway 적용
+
+```
+spring:
+  profiles: docker
+  cloud:
+    gateway:
+      routes:
+        - id: Reservation
+          uri: http://reservation:8080
+          predicates:
+            - Path=/reservation/** 
+        - id: Pay
+          uri: http://pay:8080
+          predicates:
+            - Path=/pay/** 
+        - id: Store
+          uri: http://store:8080
+          predicates:
+            - Path=/product/** 
+        - id: View
+          uri: http://view:8080
+          predicates:
+            - Path= /dashboard/**
+        - id: Supplier
+          uri: http://supplier:8080
+          predicates:
+            - Path=/stock/** 
+      globalcors:
+        corsConfigurations:
+          '[/**]':
+            allowedOrigins:
+              - "*"
+            allowedMethods:
+              - "*"
+            allowedHeaders:
+              - "*"
+            allowCredentials: true
+
+```
+
+- Gateway는 AWS 상의 Load Balancer와 연결하여 외부로 노출함
+
+```
+  cat <<EOF | kubectl apply -f -
+  apiVersion: v1
+  kind: Service
+   metadata:
+   name: $_POD_NAME
+    labels:
+      app: $_POD_NAME
+  spec:
+   ports:
+   - port: 8080
+      targetPort: 8080
+     selector:
+      app: $_POD_NAME
+     type:
+      LoadBalancer      
+
+```
 
 
 ## 동기식 호출 / 서킷 브레이킹 / 장애격리
