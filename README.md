@@ -746,7 +746,104 @@ public void wheneverPayCancelled_ReservationCancel(@Payload PayCancelled payCanc
 
 ```
 
+## CQRS 패턴 구현
 
+예약과 픽업, 결제 취소에 대한 현황을 Dashboard로 구현하여 조회할 수 있게 제공
+현재 예약 현황과 사용자별 예약 리스트를 조회할 수 있는 End point 두개 구현
+
+```
+    // 예약 리스트 조회
+    @GetMapping("/list")
+    public ResponseEntity<List<Dashboard>> getDashboards() {
+	List<Dashboard> dashboardList = dashboardRepository.findAll();
+	return ResponseEntity.ok(dashboardList);
+    }
+	
+    // 사용자별 예약 리스트 조회
+    @GetMapping("/list/{userId}")
+    public ResponseEntity<List<Dashboard>> getDashboardsByUserId(@PathVariable Long userId) {
+	List<Dashboard> dashboardList = dashboardRepository.findByCustomerId(userId);
+	return ResponseEntity.ok(dashboardList);
+    }
+```
+
+
+예약, 결제 취소, 픽업에 대한 Event Listener 구현
+
+```
+DashboardViewHandler.java
+
+    @StreamListener(KafkaProcessor.INPUT)
+    public void whenProductReserved_then_create(@Payload ProductReserved productReserved) {
+        try {
+
+            if (!productReserved.validate()) return;
+            System.out.println("\n\n##### listener ProductReserved : " + productReserved.toJson() + "\n\n");
+
+            // view 객체 생성
+            Dashboard dashboard = new Dashboard();            
+
+            dashboard.setProductId(productReserved.getProductId());
+            dashboard.setProductName(productReserved.getProductName());
+            dashboard.setProductPrice(productReserved.getProductPrice());
+            dashboard.setCustomerId(productReserved.getCustomerId());
+            dashboard.setCustomerName(productReserved.getCustomerName());
+            dashboard.setCustomerPhone(productReserved.getCustomerPhone());
+            dashboard.setReserveId(productReserved.getId());
+            dashboard.setReserveQty(productReserved.getReserveQty());
+            dashboard.setReserveDate(productReserved.getReserveDate());
+            dashboard.setReserveStatus(productReserved.getStatus());
+            dashboard.setTotalPrice(productReserved.getReserveQty() * productReserved.getProductPrice());
+
+            dashboardRepository.save(dashboard);
+
+        }catch (Exception e){
+            e.printStackTrace();
+        }
+    }
+
+    
+    @StreamListener(KafkaProcessor.INPUT)
+    public void whenPayCancelled_then_update(@Payload PayCancelled payCancelled) {
+        try {
+            if (!payCancelled.validate()) return;
+
+            Dashboard dashboard = dashboardRepository.findByReserveId(payCancelled.getReserveId());
+              
+            dashboard.setReserveStatus(payCancelled.getReserveStatus());
+            
+            DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			String dateStr = format.format(Calendar.getInstance().getTime());
+			dashboard.setCancelDate(dateStr);
+			
+            dashboardRepository.save(dashboard);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    
+    @StreamListener(KafkaProcessor.INPUT)
+    public void whenProductPickedup_then_update(@Payload ProductPickedup productPickup) {
+        try {
+            if (!productPickup.validate()) return;
+
+			Dashboard dashboard = dashboardRepository.findByReserveId(productPickup.getReserveId());
+			dashboard.setReserveStatus(productPickup.getReserveStatus());
+			
+			DateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+			String dateStr = format.format(Calendar.getInstance().getTime());
+			dashboard.setPickupDate(dateStr);
+			
+			dashboardRepository.save(dashboard);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+```
 
 
 # 운영
