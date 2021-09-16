@@ -93,7 +93,7 @@ phases:
                       httpGet:
                         path: /actuator/health
                         port: 8080
-                      initialDelaySeconds: 20
+                      initialDelaySeconds: 10
                       timeoutSeconds: 2
                       periodSeconds: 5
                       failureThreshold: 10
@@ -130,7 +130,7 @@ phases:
                 target:
                   type: Utilization
                   averageUtilization: 50
-          EOF          
+          EOF
 cache:
   paths:
     - '/root/.m2/**/*'
